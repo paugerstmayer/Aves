@@ -54,7 +54,9 @@ ul#list{list-style:none; margin:0; padding:0 16px}
   font:1.2rem/1.25 Georgia,"Times New Roman",serif; color:var(--ink);
   overflow-wrap:anywhere;
 }
-#list .count{min-width:2.2ch; text-align:center; font-weight:700; font-size:1.5rem; font-variant-numeric:tabular-nums}
+#list .count{min-width:2.6ch; text-align:center; font-weight:700; font-size:1.5rem; font-variant-numeric:tabular-nums; background:none; border:0; border-bottom:2px dotted var(--line); padding:6px 4px; color:var(--ink)}
+#heardLog{margin:0; padding-left:18px; color:var(--muted); font-size:.92rem}
+#heardLog li{margin:6px 0; overflow-wrap:anywhere}
 .step{
   width:48px; height:48px; border-radius:12px; border:1.5px solid var(--line);
   background:var(--surface); font-size:1.5rem; line-height:1; display:grid; place-items:center;
@@ -155,6 +157,14 @@ footer .inner{max-width:640px; margin:0 auto}
       <input type="text" id="aTo" placeholder="Cómo querés que figure" autocomplete="off">
       <button class="btn" id="aAdd" type="button">Guardar corrección</button>
       <ul class="chips" id="aliases"></ul>
+    </div>
+  </details>
+
+  <details>
+    <summary>Qué escuchó el dictado</summary>
+    <div class="body">
+      <p>Las últimas frases tal como las escribió el dictado, y cómo las interpretó la app. Sirve para saber si el error viene de la voz o del conteo.</p>
+      <ul id="heardLog"></ul>
     </div>
   </details>
 
@@ -305,7 +315,16 @@ footer .inner{max-width:640px; margin:0 auto}
       const minus = document.createElement('button');
       minus.type = 'button'; minus.className = 'step'; minus.textContent = '−'; minus.setAttribute('aria-label', 'Restar uno a ' + r.label);
       minus.onclick = () => { state.log.push({name:r.label, n:-1}); save(); render(); };
-      const count = document.createElement('span'); count.className = 'count'; count.textContent = r.n;
+      const count = document.createElement('button');
+      count.type = 'button'; count.className = 'count'; count.textContent = r.n;
+      count.setAttribute('aria-label', 'Cantidad de ' + r.label + ': ' + r.n + '. Tocar para corregir');
+      count.onclick = () => {
+        const v = prompt('Cantidad correcta de «' + r.label + '»:', String(r.n));
+        if(v === null) return;
+        const nv = parseInt(v, 10);
+        if(isNaN(nv) || nv < 0 || nv === r.n) return;
+        state.log.push({name:r.label, n:nv - r.n}); save(); render();
+      };
       const plus = document.createElement('button');
       plus.type = 'button'; plus.className = 'step'; plus.textContent = '+'; plus.setAttribute('aria-label', 'Sumar uno a ' + r.label);
       plus.onclick = () => { state.log.push({name:r.label, n:1}); save(); render(); };
@@ -331,6 +350,38 @@ footer .inner{max-width:640px; margin:0 auto}
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let rec = null, want = false, processed = 0, lastFinal = '', wake = null;
 
+  /* El dictado a veces corta una frase en pedazos ("gallineta" / "pico pintado" / "uno").
+     Se juntan y se interpretan recién cuando termina en un número o pasan 3 segundos sin más voz. */
+  let buf = '', bufTimer = null;
+  const heardLog = [];
+  function logHeard(raw, result){
+    heardLog.unshift('«' + raw + '» → ' + result);
+    if(heardLog.length > 10) heardLog.length = 10;
+    const ul = $('heardLog'); ul.textContent = '';
+    heardLog.forEach(x => { const li = document.createElement('li'); li.textContent = x; ul.append(li); });
+  }
+  function endsWithNumber(text){
+    const toks = text.replace(/[,;:.!?¡¿()]/g, ' ').split(/\s+/).filter(Boolean);
+    for(let k = Math.max(0, toks.length - 3); k < toks.length; k++){
+      const n = readNumber(toks, k);
+      if(n && n.next === toks.length) return true;
+    }
+    return false;
+  }
+  function flushBuf(){
+    clearTimeout(bufTimer);
+    if(!buf) return;
+    const t = buf; buf = '';
+    const {entries} = parse(t);
+    logHeard(t, entries.length ? entries.map(e => e.name + ' ' + e.n).join(' | ') : 'sin especies');
+    addFromText(t);
+  }
+  function queueText(t){
+    buf = (buf + ' ' + t).trim();
+    clearTimeout(bufTimer);
+    if(endsWithNumber(buf)) flushBuf(); else bufTimer = setTimeout(flushBuf, 3000);
+  }
+
   function setMic(on){
     const b = $('mic'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.textContent = on ? 'Detener' : 'Dictar';
   }
@@ -351,7 +402,7 @@ footer .inner{max-width:640px; margin:0 auto}
       for(let i = 0; i < e.results.length; i++){
         const r = e.results[i];
         if(r.isFinal){
-          if(i >= processed){ processed = i + 1; lastFinal = r[0].transcript.trim(); addFromText(lastFinal); }
+          if(i >= processed){ processed = i + 1; lastFinal = r[0].transcript.trim(); queueText(lastFinal); }
         } else { interim += r[0].transcript; }
       }
       $('heard').textContent = interim || (lastFinal ? 'Último dictado: ' + lastFinal : '');
@@ -365,12 +416,12 @@ footer .inner{max-width:640px; margin:0 auto}
     };
     rec.onend = () => {
       if(want){ try{ rec.start(); }catch(e){ want = false; setMic(false); keepAwake(false); } }
-      else { setMic(false); keepAwake(false); }
+      else { flushBuf(); setMic(false); keepAwake(false); }
     };
     want = true;
     try{ rec.start(); setMic(true); keepAwake(true); }catch(e){ want = false; setMic(false); }
   }
-  function stopRec(){ want = false; if(rec){ try{ rec.stop(); }catch(e){} } setMic(false); keepAwake(false); }
+  function stopRec(){ want = false; if(rec){ try{ rec.stop(); }catch(e){} } flushBuf(); setMic(false); keepAwake(false); }
   $('mic').onclick = () => want ? stopRec() : startRec();
 
   /* ---------- botones ---------- */
