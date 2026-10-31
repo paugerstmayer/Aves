@@ -1,5 +1,5 @@
-const CACHE = "aves-v4";
-const FILES = ["./aves-dictadas.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
+const CACHE = "aves-v7";
+const FILES = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));
@@ -20,13 +20,15 @@ self.addEventListener("fetch", e => {
   e.respondWith(
     fetch(e.request)
       .then(res => {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, copy));
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, copy));
+        }
         return res;
       })
       .catch(() =>
         caches.match(e.request, { ignoreSearch: true })
-          .then(hit => hit || caches.match("./aves-dictadas.html"))
+          .then(hit => hit || caches.match("./index.html"))
       )
   );
 });
