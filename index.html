@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#24473E">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
 <title>Aves dictadas</title>
 <style>
 :root{
@@ -30,6 +32,8 @@ body{
 header{background:var(--marsh); color:var(--on-marsh); padding:18px 16px 16px}
 header h1{margin:0 0 4px; font:700 1.3rem/1.2 Georgia,"Times New Roman",serif}
 #totals{margin:0; font-size:1.05rem}
+.point{padding:14px 16px 0}
+.point label{display:block; color:var(--muted); font-size:.9rem; margin-bottom:4px}
 .bar-top{display:flex; gap:8px; align-items:center; justify-content:space-between; padding:14px 16px 6px}
 .bar-top label{color:var(--muted); font-size:.9rem}
 select,input[type=text],textarea{
@@ -106,6 +110,11 @@ footer .inner{max-width:640px; margin:0 auto}
 
   <div id="status" role="status"></div>
 
+  <div class="point">
+    <label for="point">Punto de muestreo (es el nombre del archivo al descargar)</label>
+    <input type="text" id="point" placeholder="Ej.: Laguna Las Perdices 1" autocomplete="off">
+  </div>
+
   <div class="bar-top">
     <label>Orden
       <select id="sort" aria-label="Orden de la lista">
@@ -173,7 +182,12 @@ footer .inner{max-width:640px; margin:0 auto}
     <div class="body">
       <button class="btn" id="copy" type="button">Copiar lista</button>
       <button class="btn" id="csv" type="button">Descargar planilla (CSV)</button>
-      <button class="btn danger" id="clear" type="button">Borrar todas las observaciones</button>
+      <button class="btn alt" id="backup" type="button">Guardar copia de mis nombres (archivo)</button>
+      <button class="btn alt" id="restore" type="button">Cargar copia guardada</button>
+      <input type="file" id="restoreFile" accept=".json,application/json" hidden>
+      <p>La copia guarda tus correcciones de nombres y tu lista de especies habituales, para no perderlas si cambiás de celu o borrás los datos del navegador.</p>
+      <button class="btn danger" id="clear" type="button">Empezar nuevo punto (borra la lista)</button>
+      <p>Versión 5</p>
     </div>
   </details>
 </div>
@@ -198,9 +212,10 @@ footer .inner{max-width:640px; margin:0 auto}
     log: store.get('aves.log', []),
     aliases: store.get('aves.aliases', []),
     known: store.get('aves.known', []),
+    point: store.get('aves.point', ''),
     sort: 'recent'
   };
-  const save = () => { store.set('aves.log', state.log); store.set('aves.aliases', state.aliases); store.set('aves.known', state.known); };
+  const save = () => { store.set('aves.log', state.log); store.set('aves.aliases', state.aliases); store.set('aves.known', state.known); store.set('aves.point', state.point); };
 
   /* ---------- utilidades de texto ---------- */
   const norm = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
@@ -272,6 +287,13 @@ footer .inner{max-width:640px; margin:0 auto}
     return best && bd <= lim ? best : name;
   }
   const canonical = raw => cap(applyAlias(snap(applyAlias(raw))));
+  // Todo nombre corregido pasa a la lista de habituales, así también se corrigen variantes parecidas.
+  function addKnown(name){
+    if(!name || state.known.some(k => norm(k) === norm(name))) return;
+    state.known.push(name);
+    $('known').value = state.known.join('\n');
+  }
+  const flash = t => { msg(t); setTimeout(() => msg(''), 3500); };
 
   function aggregate(){
     const m = new Map();
@@ -309,7 +331,7 @@ footer .inner{max-width:640px; margin:0 auto}
       nameBtn.onclick = () => {
         const nuevo = prompt('Nombre correcto para «' + r.label + '» (también corrige futuros dictados):', r.label);
         if(nuevo && nuevo.trim() && norm(nuevo) !== norm(r.label)){
-          state.aliases.push({from:r.label, to:nuevo.trim()}); save(); render();
+          state.aliases.push({from:r.label, to:nuevo.trim()}); addKnown(nuevo.trim()); save(); render();
         }
       };
       const minus = document.createElement('button');
@@ -452,13 +474,16 @@ footer .inner{max-width:640px; margin:0 auto}
   $('manualGo').onclick = addManual;
   $('manual').onkeydown = e => { if(e.key === 'Enter'){ e.preventDefault(); addManual(); } };
 
+  $('point').value = state.point;
+  $('point').oninput = e => { state.point = e.target.value; save(); };
+
   $('known').value = state.known.join('\n');
   $('known').oninput = e => { state.known = e.target.value.split('\n').map(s => s.trim()).filter(Boolean); save(); };
 
   $('aAdd').onclick = () => {
     const f = $('aFrom').value.trim(), t = $('aTo').value.trim();
     if(!f || !t) return;
-    state.aliases.push({from:f, to:t}); $('aFrom').value = ''; $('aTo').value = ''; save(); render();
+    state.aliases.push({from:f, to:t}); addKnown(t); $('aFrom').value = ''; $('aTo').value = ''; save(); render();
   };
 
   function listText(){
@@ -480,15 +505,50 @@ footer .inner{max-width:640px; margin:0 auto}
     const blob = new Blob(['\ufeff' + lines.join('\r\n')], {type:'text/csv;charset=utf-8'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'aves_' + new Date().toISOString().slice(0, 10) + '.csv';
+    const base = state.point.replace(/[\\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+    a.download = (base || 'aves_' + new Date().toISOString().slice(0, 10)) + '.csv';
+    flash('Descargando «' + a.download + '». Queda en la carpeta Descargas.');
     document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   };
   $('clear').onclick = () => {
-    if(confirm('¿Borrar todas las observaciones? Las correcciones y tu lista de especies se mantienen.')){
-      state.log = []; lastFinal = ''; $('heard').textContent = ''; save(); render();
+    if(confirm('¿Empezar un punto nuevo? Se borran la lista y el nombre del punto. Tus correcciones y especies habituales se mantienen. Descargá antes el CSV si lo necesitás.')){
+      state.log = []; state.point = ''; $('point').value = ''; buf = ''; prevTokens = [];
+      lastFinal = ''; $('heard').textContent = ''; save(); render();
     }
   };
+
+  /* ---------- copia de seguridad de nombres ---------- */
+  $('backup').onclick = () => {
+    const data = {app:'aves-dictadas', version:1, aliases:state.aliases, known:state.known};
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'aves-nombres_' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    flash('Copia descargada.');
+  };
+  $('restore').onclick = () => $('restoreFile').click();
+  $('restoreFile').onchange = async e => {
+    const f = e.target.files[0]; if(!f) return;
+    try{
+      const d = JSON.parse(await f.text());
+      if(Array.isArray(d.aliases)) d.aliases.forEach(x => {
+        if(x && x.from && x.to && !state.aliases.some(y => norm(y.from) === norm(String(x.from))))
+          state.aliases.push({from:String(x.from), to:String(x.to)});
+      });
+      if(Array.isArray(d.known)) d.known.forEach(k => { if(typeof k === 'string' && k.trim()) addKnown(k.trim()); });
+      save(); render(); flash('Copia cargada.');
+    }catch(err){ msg('No pude leer ese archivo. Tiene que ser una copia guardada desde esta app.'); }
+    e.target.value = '';
+  };
+
+  /* ---------- guardado permanente y uso sin conexión ---------- */
+  try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
+  if('serviceWorker' in navigator && location.protocol.indexOf('http') === 0){
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
 
   render();
 })();
