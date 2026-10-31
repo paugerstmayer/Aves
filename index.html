@@ -189,7 +189,7 @@ footer .inner{max-width:640px; margin:0 auto}
       <input type="file" id="restoreFile" accept=".json,application/json" hidden>
       <p>La copia guarda tus correcciones de nombres y tu lista de especies habituales, para no perderlas si cambiás de celu o borrás los datos del navegador.</p>
       <button class="btn danger" id="clear" type="button">Empezar nuevo punto (borra la lista)</button>
-      <p>Versión 8</p>
+      <p>Versión 9</p>
     </div>
   </details>
 </div>
@@ -288,16 +288,7 @@ footer .inner{max-width:640px; margin:0 auto}
     const lim = k.length <= 5 ? 0 : k.length <= 9 ? 1 : 2;
     return best && bd <= lim ? best : name;
   }
-  // Si un nombre quedó escrito dos veces seguidas ("pico de plata pico de plata"), se deja una sola vez.
-  function dedupeName(s){
-    const t = s.trim().split(/\s+/);
-    if(t.length >= 2 && t.length % 2 === 0){
-      const half = t.length / 2;
-      if(t.slice(0, half).every((w, i) => norm(w) === norm(t[half + i]))) return t.slice(0, half).join(' ');
-    }
-    return s;
-  }
-  const canonical = raw => cap(dedupeName(applyAlias(snap(applyAlias(dedupeName(raw))))));
+  const canonical = raw => cap(applyAlias(snap(applyAlias(raw))));
   // Todo nombre corregido pasa a la lista de habituales, así también se corrigen variantes parecidas.
   function addKnown(name){
     if(!name || state.known.some(k => norm(k) === norm(name))) return;
@@ -417,15 +408,19 @@ footer .inner{max-width:640px; margin:0 auto}
   }
   /* Chrome en Android a veces entrega cada resultado con todo el texto acumulado
      ("gallineta", "gallineta pico", "gallineta pico pintado"). Se toma solo lo nuevo. */
-  let prevTokens = [];
+  let prevTokens = [], prevTime = 0;
   const toTokens = s => s.replace(/[,;:.!?¡¿()]/g, ' ').split(/\s+/).filter(Boolean);
   function queueText(t){
     const toks = toTokens(t);
+    if(!toks.length) return;                 // Chrome a veces entrega resultados vacíos
+    const now = Date.now();
+    const same = prevTokens.length === toks.length && prevTokens.every((w, i) => norm(w) === norm(toks[i]));
+    if(same && now - prevTime < 2000){ prevTime = now; return; }   // mismo resultado repetido casi al instante
     let delta = toks;
     if(prevTokens.length && toks.length > prevTokens.length && prevTokens.every((w, i) => norm(w) === norm(toks[i]))){
       delta = toks.slice(prevTokens.length);
     }
-    prevTokens = toks;
+    prevTokens = toks; prevTime = now;
     if(!delta.length) return;
     buf = (buf + ' ' + delta.join(' ')).trim();
     clearTimeout(bufTimer);
@@ -446,7 +441,7 @@ footer .inner{max-width:640px; margin:0 auto}
     msg('');
     rec = new SR();
     rec.lang = 'es-AR'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
-    rec.onstart = () => { processed = 0; prevTokens = []; };
+    rec.onstart = () => { processed = 0; prevTokens = []; prevTime = 0; };
     rec.onresult = e => {
       let interim = '';
       for(let i = 0; i < e.results.length; i++){
