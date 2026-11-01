@@ -26,7 +26,7 @@ html{-webkit-text-size-adjust:100%}
 body{
   margin:0; background:var(--bg); color:var(--ink);
   font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  padding-bottom:calc(168px + env(safe-area-inset-bottom));
+  padding-bottom:calc(214px + env(safe-area-inset-bottom));
 }
 .wrap{max-width:640px; margin:0 auto}
 header{background:var(--marsh); color:var(--on-marsh); padding:18px 16px 16px}
@@ -99,6 +99,17 @@ footer .inner{max-width:640px; margin:0 auto}
   #mic[aria-pressed=true]{animation:pulse 1.6s ease-in-out infinite}
   @keyframes pulse{50%{opacity:.82}}
 }
+#pocket{
+  position:fixed; inset:0; z-index:100; background:#000; color:#8A9A94;
+  display:flex; flex-direction:column; justify-content:center; align-items:center; gap:10px;
+  padding:24px; text-align:center; touch-action:none; -webkit-user-select:none; user-select:none;
+}
+#pocket[hidden]{display:none}
+#pocket p{margin:0; max-width:34ch}
+#pocketTitle{font-size:1.15rem; color:#B7C4BE}
+#pocketBar{width:min(260px,70%); height:6px; border-radius:3px; background:#1B2622; overflow:hidden; margin-top:14px}
+#pocketBar span{display:block; height:100%; width:0; background:#E3B02A}
+#pocket.holding #pocketBar span{width:100%; transition:width 3s linear}
 </style>
 </head>
 <body>
@@ -189,7 +200,7 @@ footer .inner{max-width:640px; margin:0 auto}
       <input type="file" id="restoreFile" accept=".json,application/json" hidden>
       <p>La copia guarda tus correcciones de nombres y tu lista de especies habituales, para no perderlas si cambiás de celu o borrás los datos del navegador.</p>
       <button class="btn danger" id="clear" type="button">Empezar nuevo punto (borra la lista)</button>
-      <p>Versión 9</p>
+      <p>Versión 10</p>
     </div>
   </details>
 </div>
@@ -198,8 +209,17 @@ footer .inner{max-width:640px; margin:0 auto}
   <div class="inner">
     <p id="heard" aria-live="off"></p>
     <button id="mic" type="button" aria-pressed="false">Dictar</button>
+    <button class="link" id="pocketBtn" type="button">Modo bolsillo (pantalla negra)</button>
   </div>
 </footer>
+
+<div id="pocket" hidden role="dialog" aria-label="Modo bolsillo">
+  <p id="pocketTitle">Dictando…</p>
+  <p id="pocketCount">0 especies, 0 individuos</p>
+  <p id="pocketLast"></p>
+  <p>Para salir, mantené apretada la pantalla durante 3 segundos.</p>
+  <div id="pocketBar"><span></span></div>
+</div>
 
 <script>
 (() => {
@@ -372,7 +392,7 @@ footer .inner{max-width:640px; margin:0 auto}
 
   /* ---------- dictado ---------- */
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let rec = null, want = false, processed = 0, lastFinal = '', wake = null;
+  let rec = null, want = false, processed = 0, lastFinal = '', wake = null, pocket = false, holdTimer = null;
 
   /* El dictado a veces corta una frase en pedazos ("gallineta" / "pico pintado" / "uno").
      Se juntan y se interpretan recién cuando termina en un número o pasan 3 segundos sin más voz. */
@@ -403,8 +423,12 @@ footer .inner{max-width:640px; margin:0 auto}
     if(!buf) return;
     const t = buf; buf = '';
     const {entries} = parse(t);
-    logHeard(t, entries.length ? entries.map(e => e.name + ' ' + e.n).join(' | ') : 'sin especies');
+    const interp = entries.length ? entries.map(e => e.name + ' ' + e.n).join(' | ') : 'sin especies';
+    logHeard(t, interp);
     addFromText(t);
+    $('pocketLast').textContent = 'Último: ' + interp;
+    updatePocket();
+    if(pocket) buzz(60);
   }
   /* Chrome en Android a veces entrega cada resultado con todo el texto acumulado
      ("gallineta", "gallineta pico", "gallineta pico pintado"). Se toma solo lo nuevo. */
@@ -432,10 +456,46 @@ footer .inner{max-width:640px; margin:0 auto}
   }
   async function keepAwake(on){
     try{
-      if(on && navigator.wakeLock){ wake = await navigator.wakeLock.request('screen'); }
-      else if(wake){ await wake.release(); wake = null; }
+      if(on && navigator.wakeLock){
+        if(!wake || wake.released) wake = await navigator.wakeLock.request('screen');
+      } else if(wake){ await wake.release(); wake = null; }
     }catch(e){}
   }
+  // Al volver a la app (por ejemplo después de bloquear y desbloquear), retoma el dictado y la pantalla encendida.
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible' && want){
+      keepAwake(true);
+      try{ rec.start(); }catch(e){}
+    }
+  });
+
+  /* ---------- modo bolsillo ---------- */
+  const buzz = p => { try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} };
+  function updatePocket(){
+    const rows = aggregate(); const total = rows.reduce((s, r) => s + r.n, 0);
+    $('pocketCount').textContent = rows.length + (rows.length === 1 ? ' especie, ' : ' especies, ') + total + (total === 1 ? ' individuo' : ' individuos');
+  }
+  function pocketAlert(){
+    $('pocketTitle').textContent = 'El dictado se detuvo';
+    buzz([300, 120, 300, 120, 300]);
+  }
+  function enterPocket(){
+    pocket = true; $('pocket').hidden = false; updatePocket();
+    if(!want) startRec();
+    $('pocketTitle').textContent = want ? 'Dictando…' : 'El dictado no pudo iniciar';
+  }
+  function exitPocket(){
+    clearTimeout(holdTimer); $('pocket').classList.remove('holding');
+    pocket = false; $('pocket').hidden = true; buzz(40);
+  }
+  (() => {
+    const pk = $('pocket');
+    const holdStart = e => { e.preventDefault(); pk.classList.add('holding'); clearTimeout(holdTimer); holdTimer = setTimeout(exitPocket, 3000); };
+    const holdEnd = () => { pk.classList.remove('holding'); clearTimeout(holdTimer); };
+    pk.addEventListener('pointerdown', holdStart);
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => pk.addEventListener(ev, holdEnd));
+    pk.addEventListener('contextmenu', e => e.preventDefault());
+  })();
   function startRec(){
     if(!SR){ msg('Este navegador no permite dictar. Abrí la página en Chrome para Android. Igual podés usar «Pegar texto» y los botones + y −.'); return; }
     msg('');
@@ -460,14 +520,15 @@ footer .inner{max-width:640px; margin:0 auto}
       }
     };
     rec.onend = () => {
-      if(want){ try{ rec.start(); }catch(e){ want = false; setMic(false); keepAwake(false); } }
-      else { flushBuf(); setMic(false); keepAwake(false); }
+      if(want){ try{ rec.start(); }catch(e){ want = false; setMic(false); keepAwake(false); if(pocket) pocketAlert(); } }
+      else { flushBuf(); setMic(false); keepAwake(false); if(pocket) pocketAlert(); }
     };
     want = true;
     try{ rec.start(); setMic(true); keepAwake(true); }catch(e){ want = false; setMic(false); }
   }
   function stopRec(){ want = false; if(rec){ try{ rec.stop(); }catch(e){} } flushBuf(); setMic(false); keepAwake(false); }
   $('mic').onclick = () => want ? stopRec() : startRec();
+  $('pocketBtn').onclick = enterPocket;
 
   /* ---------- botones ---------- */
   $('sort').onchange = e => { state.sort = e.target.value; render(); };
