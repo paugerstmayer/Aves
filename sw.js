@@ -1,8 +1,9 @@
-const CACHE = "aves-v7";
-const FILES = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
+const CACHE = "aves-v11";
+const FILES = ["./", "./index.html", "./manifest.json", "./especies.csv", "./icon-192.png", "./icon-512.png"];
 
+// Cada archivo se guarda por separado: si falta alguno, el resto igual queda disponible sin conexión.
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));
+  e.waitUntil(caches.open(CACHE).then(c => Promise.all(FILES.map(f => c.add(f).catch(() => {})))));
   self.skipWaiting();
 });
 

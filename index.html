@@ -58,6 +58,7 @@ ul#list{list-style:none; margin:0; padding:0 16px}
   font:1.2rem/1.25 Georgia,"Times New Roman",serif; color:var(--ink);
   overflow-wrap:anywhere;
 }
+#list .sci{display:block; font:italic .85rem/1.3 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--muted); margin-top:2px}
 #list .count{min-width:2.6ch; text-align:center; font-weight:700; font-size:1.5rem; font-variant-numeric:tabular-nums; background:none; border:0; border-bottom:2px dotted var(--line); padding:6px 4px; color:var(--ink)}
 #heardLog,#rawLog{margin:0; padding-left:18px; color:var(--muted); font-size:.92rem}
 #heardLog li,#rawLog li{margin:6px 0; overflow-wrap:anywhere}
@@ -164,7 +165,8 @@ footer .inner{max-width:640px; margin:0 auto}
   <details>
     <summary>Mis especies habituales</summary>
     <div class="body">
-      <p>Una por línea. Si el dictado escribe un nombre parecido a uno de esta lista, se corrige solo.</p>
+      <p id="baseInfo"></p>
+      <p>Tus agregados personales, uno por línea. Se suman a la lista base: si el dictado escribe un nombre parecido, se corrige solo.</p>
       <textarea id="known" placeholder="Tijereta&#10;Perdiz chica&#10;Pecho amarillo"></textarea>
     </div>
   </details>
@@ -200,7 +202,7 @@ footer .inner{max-width:640px; margin:0 auto}
       <input type="file" id="restoreFile" accept=".json,application/json" hidden>
       <p>La copia guarda tus correcciones de nombres y tu lista de especies habituales, para no perderlas si cambiás de celu o borrás los datos del navegador.</p>
       <button class="btn danger" id="clear" type="button">Empezar nuevo punto (borra la lista)</button>
-      <p>Versión 10</p>
+      <p>Versión 11</p>
     </div>
   </details>
 </div>
@@ -240,7 +242,7 @@ footer .inner{max-width:640px; margin:0 auto}
   const save = () => { store.set('aves.log', state.log); store.set('aves.aliases', state.aliases); store.set('aves.known', state.known); store.set('aves.point', state.point); };
 
   /* ---------- utilidades de texto ---------- */
-  const norm = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+  const norm = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[-\u2010\u2013]/g, ' ').replace(/\s+/g, ' ').trim();
   const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
   function lev(a, b){
     const m = a.length, n = b.length;
@@ -298,13 +300,75 @@ footer .inner{max-width:640px; margin:0 auto}
 
   /* ---------- nombres: correcciones y lista habitual ---------- */
   const applyAlias = name => { const k = norm(name); const a = state.aliases.find(x => norm(x.from) === k); return a ? a.to : name; };
+  /* ---------- lista base de especies (especies.csv: la misma para todos los usuarios) ---------- */
+  const base = {list:[], byKey:new Map(), variants:new Map()};
+  function parseCSV(text, d){
+    const rows = []; let row = [], cell = '', q = false;
+    for(let i = 0; i < text.length; i++){
+      const c = text[i];
+      if(q){
+        if(c === '"'){ if(text[i+1] === '"'){ cell += '"'; i++; } else q = false; }
+        else cell += c;
+      } else if(c === '"') q = true;
+      else if(c === d){ row.push(cell); cell = ''; }
+      else if(c === '\n' || c === '\r'){
+        if(c === '\r' && text[i+1] === '\n') i++;
+        row.push(cell); cell = '';
+        if(row.some(x => x.trim())) rows.push(row);
+        row = [];
+      } else cell += c;
+    }
+    row.push(cell); if(row.some(x => x.trim())) rows.push(row);
+    return rows;
+  }
+  function loadBase(text){
+    text = text.replace(/^\ufeff/, '');
+    if(/^\s*</.test(text)) return false;                       // no es un CSV (por ejemplo, una página de error)
+    const first = text.split(/\r?\n/)[0] || '';
+    const d = (first.match(/;/g) || []).length >= (first.match(/,/g) || []).length ? ';' : ',';
+    const rows = parseCSV(text, d);
+    if(rows.length < 2) return false;
+    const head = rows[0].map(norm);
+    const find = (...keys) => head.findIndex(h => keys.some(k => h.includes(k)));
+    let ic = find('comun'), is = find('cientif'), iv = find('escuch', 'variant', 'alias');
+    if(ic < 0){ ic = 0; if(is < 0) is = 1; }
+    const list = [], byKey = new Map(), variants = new Map();
+    rows.slice(1).forEach(r => {
+      const common = (r[ic] || '').trim(); if(!common) return;
+      const sp = {common, sci:(is >= 0 ? (r[is] || '') : '').trim()};
+      list.push(sp); byKey.set(norm(common), sp);
+      if(iv >= 0) (r[iv] || '').split(/[,|]/).map(s => norm(s)).filter(Boolean).forEach(v => variants.set(v, sp));
+    });
+    if(!list.length) return false;
+    base.list = list; base.byKey = byKey; base.variants = variants;
+    return true;
+  }
+  const sciOf = label => { const sp = base.byKey.get(norm(label)); return sp ? sp.sci : ''; };
+  async function loadBaseList(){
+    let text = null;
+    try{
+      const res = await fetch('especies.csv', {cache:'no-cache'});
+      if(res.ok){ text = await res.text(); }
+    }catch(e){}
+    let ok = text !== null && loadBase(text);
+    if(ok) store.set('aves.base', text);
+    else { const saved = store.get('aves.base', null); ok = !!saved && loadBase(saved); }
+    $('baseInfo').textContent = ok ? 'Lista base cargada: ' + base.list.length + ' especies.' : 'No hay lista base cargada.';
+    render();
+  }
+
   function snap(name){
-    const k = norm(name); let best = null, bd = 99;
-    for(const s of state.known){
-      const sk = norm(s); if(!sk) continue;
+    const k = norm(name);
+    const v = base.variants.get(k); if(v) return v.common;       // error típico del dictado ya conocido
+    const exact = base.byKey.get(k); if(exact) return exact.common;
+    let best = null, bd = 99;
+    const consider = s => {
+      const sk = norm(s); if(!sk || Math.abs(sk.length - k.length) > 2) return;
       const d = sk === k ? 0 : lev(sk, k);
       if(d < bd){ bd = d; best = s; }
-    }
+    };
+    state.known.forEach(consider);
+    base.list.forEach(sp => consider(sp.common));
     const lim = k.length <= 5 ? 0 : k.length <= 9 ? 1 : 2;
     return best && bd <= lim ? best : name;
   }
@@ -318,9 +382,10 @@ footer .inner{max-width:640px; margin:0 auto}
   const flash = t => { msg(t); setTimeout(() => msg(''), 3500); };
 
   function aggregate(){
-    const m = new Map();
+    const m = new Map(), cache = new Map();
     state.log.forEach((e, idx) => {
-      const label = canonical(e.name); const k = norm(label);
+      if(!cache.has(e.name)) cache.set(e.name, canonical(e.name));
+      const label = cache.get(e.name); const k = norm(label);
       const r = m.get(k) || {label, n:0, last:0};
       r.n += e.n; r.last = idx; m.set(k, r);
     });
@@ -349,6 +414,8 @@ footer .inner{max-width:640px; margin:0 auto}
       const li = document.createElement('li');
       const nameBtn = document.createElement('button');
       nameBtn.type = 'button'; nameBtn.className = 'name'; nameBtn.textContent = r.label;
+      const sci = sciOf(r.label);
+      if(sci){ const s = document.createElement('span'); s.className = 'sci'; s.textContent = sci; nameBtn.append(s); }
       nameBtn.setAttribute('aria-label', 'Renombrar ' + r.label);
       nameBtn.onclick = () => {
         const nuevo = prompt('Nombre correcto para «' + r.label + '» (también corrige futuros dictados):', r.label);
@@ -574,7 +641,8 @@ footer .inner{max-width:640px; margin:0 auto}
   $('csv').onclick = () => {
     const rows = aggregate().sort((a, b) => a.label.localeCompare(b.label, 'es'));
     if(!rows.length){ msg('La lista está vacía.'); return; }
-    const lines = ['Especie;Individuos', ...rows.map(r => '"' + r.label.replace(/"/g, '""') + '";' + r.n)];
+    const q = s => '"' + String(s).replace(/"/g, '""') + '"';
+    const lines = ['Especie;Nombre científico;Individuos', ...rows.map(r => q(r.label) + ';' + q(sciOf(r.label)) + ';' + r.n)];
     const blob = new Blob(['\ufeff' + lines.join('\r\n')], {type:'text/csv;charset=utf-8'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -624,6 +692,7 @@ footer .inner{max-width:640px; margin:0 auto}
   }
 
   render();
+  loadBaseList();
 })();
 </script>
 </body>
