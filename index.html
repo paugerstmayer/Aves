@@ -35,10 +35,15 @@ header h1{margin:0 0 4px; font:700 1.3rem/1.2 Georgia,"Times New Roman",serif}
 .point{padding:14px 16px 0}
 .point label{display:block; color:var(--muted); font-size:.9rem; margin-bottom:4px}
 .point .row{margin-top:8px}
+.point input[type=date]{max-width:240px}
+.check{display:flex; gap:10px; align-items:center; min-height:44px}
+.check input{width:22px; height:22px}
+#audioList li{flex-wrap:wrap}
+#audioList audio{width:100%}
 .gpsinfo{margin:6px 0 0; color:var(--muted); font-size:.9rem}
 .bar-top{display:flex; gap:8px; align-items:center; justify-content:space-between; padding:14px 16px 6px}
 .bar-top label{color:var(--muted); font-size:.9rem}
-select,input[type=text],textarea{
+select,input[type=text],input[type=date],textarea{
   font:inherit; color:var(--ink); background:var(--surface);
   border:1.5px solid var(--line); border-radius:10px; padding:10px 12px; width:100%;
 }
@@ -127,6 +132,9 @@ footer .inner{max-width:640px; margin:0 auto}
   <div class="point">
     <label for="point">Punto de muestreo (es el nombre del archivo al descargar)</label>
     <input type="text" id="point" placeholder="Ej.: Laguna Las Perdices 1" autocomplete="off">
+    <label for="fecha" style="margin-top:12px">Fecha del muestreo</label>
+    <input type="date" id="fecha">
+    <p class="gpsinfo" id="dateNote"></p>
     <div class="row"><button class="btn alt" id="gpsBtn" type="button">Tomar GPS del punto</button></div>
     <p class="gpsinfo" id="gpsInfo" aria-live="polite">Sin GPS en este punto.</p>
   </div>
@@ -197,6 +205,16 @@ footer .inner{max-width:640px; margin:0 auto}
   </details>
 
   <details>
+    <summary>Audio de respaldo (experimental)</summary>
+    <div class="body">
+      <p>Intenta grabar el audio mientras dictás, para poder revisarlo si la lista tiene dudas. En muchos celulares Android el micrófono no se puede usar para las dos cosas a la vez: el dictado puede fallar o el audio puede salir en silencio. Probalo primero con una frase corta.</p>
+      <label class="check"><input type="checkbox" id="audioOn"> Guardar audio al dictar</label>
+      <p><strong>Por ahora los audios solo existen mientras la app está abierta. Descargá cada uno al terminar el punto.</strong></p>
+      <ul class="chips" id="audioList"></ul>
+    </div>
+  </details>
+
+  <details>
     <summary>Exportar y borrar</summary>
     <div class="body">
       <button class="btn" id="copy" type="button">Copiar lista</button>
@@ -207,7 +225,7 @@ footer .inner{max-width:640px; margin:0 auto}
       <input type="file" id="restoreFile" accept=".json,application/json" hidden>
       <p>La copia guarda tus correcciones de nombres y tu lista de especies habituales, para no perderlas si cambiás de celu o borrás los datos del navegador.</p>
       <button class="btn danger" id="clear" type="button">Empezar nuevo punto (borra la lista)</button>
-      <p>Versión 12</p>
+      <p>Versión 13</p>
     </div>
   </details>
 </div>
@@ -243,9 +261,11 @@ footer .inner{max-width:640px; margin:0 auto}
     known: store.get('aves.known', []),
     point: store.get('aves.point', ''),
     gps: store.get('aves.gps', null),
+    date: store.get('aves.date', ''),
+    audioOn: store.get('aves.audioOn', false),
     sort: 'recent'
   };
-  const save = () => { store.set('aves.log', state.log); store.set('aves.aliases', state.aliases); store.set('aves.known', state.known); store.set('aves.point', state.point); store.set('aves.gps', state.gps); };
+  const save = () => { store.set('aves.log', state.log); store.set('aves.aliases', state.aliases); store.set('aves.known', state.known); store.set('aves.point', state.point); store.set('aves.gps', state.gps); store.set('aves.date', state.date); store.set('aves.audioOn', state.audioOn); };
 
   /* ---------- utilidades de texto ---------- */
   const norm = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[-\u2010\u2013]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -466,6 +486,7 @@ footer .inner{max-width:640px; margin:0 auto}
   /* ---------- dictado ---------- */
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let rec = null, want = false, processed = 0, lastFinal = '', wake = null, pocket = false, holdTimer = null;
+  let stopAudio = () => {};
 
   /* El dictado a veces corta una frase en pedazos ("gallineta" / "pico pintado" / "uno").
      Se juntan y se interpretan recién cuando termina en un número o pasan 3 segundos sin más voz. */
@@ -586,6 +607,7 @@ footer .inner{max-width:640px; margin:0 auto}
       $('heard').textContent = interim || (lastFinal ? 'Último dictado: ' + lastFinal : '');
     };
     rec.onerror = e => {
+      if(e.error === 'audio-capture' && mrec) msg('El micrófono parece ocupado por la grabación de audio. Desactivá «Guardar audio al dictar» y probá de nuevo.');
       if(e.error === 'not-allowed' || e.error === 'service-not-allowed'){
         want = false; msg('El micrófono está bloqueado. Habilitá el permiso del micrófono para esta página en Chrome y probá de nuevo.');
       } else if(e.error === 'network'){
@@ -594,12 +616,12 @@ footer .inner{max-width:640px; margin:0 auto}
     };
     rec.onend = () => {
       if(want){ try{ rec.start(); }catch(e){ want = false; setMic(false); keepAwake(false); if(pocket) pocketAlert(); } }
-      else { flushBuf(); setMic(false); keepAwake(false); if(pocket) pocketAlert(); }
+      else { flushBuf(); stopAudio(); setMic(false); keepAwake(false); if(pocket) pocketAlert(); }
     };
     want = true;
-    try{ rec.start(); setMic(true); keepAwake(true); }catch(e){ want = false; setMic(false); }
+    try{ rec.start(); setMic(true); keepAwake(true); startAudio(); }catch(e){ want = false; setMic(false); }
   }
-  function stopRec(){ want = false; if(rec){ try{ rec.stop(); }catch(e){} } flushBuf(); setMic(false); keepAwake(false); }
+  function stopRec(){ want = false; if(rec){ try{ rec.stop(); }catch(e){} } flushBuf(); stopAudio(); setMic(false); keepAwake(false); }
   $('mic').onclick = () => want ? stopRec() : startRec();
   $('pocketBtn').onclick = enterPocket;
 
@@ -649,12 +671,12 @@ footer .inner{max-width:640px; margin:0 auto}
   const today = () => { const d = new Date(); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); };
   function fileBase(){
     const b = state.point.replace(/[\\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
-    return b || 'aves_' + today();
+    return b || 'aves_' + (state.date || today());
   }
   function exportTable(){
     const g = state.gps, rows = aggregate().sort((a, b) => a.label.localeCompare(b.label, 'es'));
     return [['Punto', 'Fecha', 'Latitud', 'Longitud', 'Especie', 'Nombre científico', 'Individuos'],
-      ...rows.map(r => [state.point.trim(), today(), g ? g.lat : '', g ? g.lon : '', r.label, sciOf(r.label), r.n])];
+      ...rows.map(r => [state.point.trim(), state.date || today(), g ? g.lat : '', g ? g.lon : '', r.label, sciOf(r.label), r.n])];
   }
   function csvText(table){
     const q = s => '"' + String(s).replace(/"/g, '""') + '"';
@@ -734,6 +756,62 @@ footer .inner{max-width:640px; margin:0 auto}
     downloadBlob(new Blob(['\ufeff' + csvText(exportTable())], {type:'text/csv;charset=utf-8'}), fileBase() + '.csv');
   };
 
+  /* ---------- audio de respaldo (experimental, se guarda solo mientras la app está abierta) ---------- */
+  let media = null, mrec = null, mchunks = [], mstart = 0, audioUrls = [];
+  const audios = [];
+  async function startAudio(){
+    if(!state.audioOn || mrec) return;
+    if(!navigator.mediaDevices || !window.MediaRecorder){ msg('Este navegador no puede grabar audio.'); return; }
+    try{
+      media = await navigator.mediaDevices.getUserMedia({audio:true});
+      const type = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find(t => MediaRecorder.isTypeSupported(t));
+      mrec = new MediaRecorder(media, type ? {mimeType:type, audioBitsPerSecond:32000} : undefined);
+      mchunks = []; mstart = Date.now();
+      mrec.ondataavailable = e => { if(e.data && e.data.size) mchunks.push(e.data); };
+      mrec.onstop = finishAudio;
+      mrec.start(5000);
+    }catch(e){
+      if(media) media.getTracks().forEach(t => t.stop());
+      media = null; mrec = null;
+      msg('No pude grabar el audio de respaldo. El dictado sigue andando.');
+    }
+  }
+  stopAudio = () => { if(mrec && mrec.state !== 'inactive'){ try{ mrec.stop(); }catch(e){} } };
+  function finishAudio(){
+    const type = (mrec && mrec.mimeType) || 'audio/webm';
+    const blob = new Blob(mchunks, {type});
+    if(media) media.getTracks().forEach(t => t.stop());
+    media = null; mrec = null; mchunks = [];
+    if(!blob.size) return;
+    audios.unshift({blob, ext:type.indexOf('mp4') >= 0 ? 'm4a' : 'webm', secs:Math.round((Date.now() - mstart) / 1000), at:new Date()});
+    renderAudios();
+  }
+  function renderAudios(){
+    audioUrls.forEach(u => URL.revokeObjectURL(u)); audioUrls = [];
+    const ul = $('audioList'); ul.textContent = '';
+    audios.forEach((a, idx) => {
+      const li = document.createElement('li');
+      const t = document.createElement('span');
+      t.textContent = pad2(a.at.getHours()) + ':' + pad2(a.at.getMinutes()) + ' · ' + Math.floor(a.secs / 60) + ':' + pad2(a.secs % 60) + ' · ' + (a.blob.size / 1048576).toFixed(1) + ' MB';
+      const url = URL.createObjectURL(a.blob); audioUrls.push(url);
+      const player = document.createElement('audio'); player.controls = true; player.src = url;
+      const dl = document.createElement('button'); dl.type = 'button'; dl.className = 'btn alt'; dl.textContent = 'Descargar';
+      dl.onclick = () => downloadBlob(a.blob, fileBase() + ' audio ' + pad2(a.at.getHours()) + pad2(a.at.getMinutes()) + '.' + a.ext);
+      const del = document.createElement('button'); del.type = 'button'; del.className = 'btn danger'; del.textContent = 'Borrar';
+      del.onclick = () => { if(confirm('¿Borrar este audio?')){ audios.splice(idx, 1); renderAudios(); } };
+      li.append(t, dl, del, player); ul.append(li);
+    });
+  }
+  $('audioOn').checked = !!state.audioOn;
+  $('audioOn').onchange = e => { state.audioOn = e.target.checked; save(); };
+
+  /* ---------- fecha del muestreo ---------- */
+  function showDateNote(){
+    $('dateNote').textContent = !state.date ? 'Sin fecha: al descargar se usa la de hoy.' : state.date !== today() ? 'Ojo: no es la fecha de hoy.' : '';
+  }
+  $('fecha').value = state.date;
+  $('fecha').onchange = e => { state.date = e.target.value; save(); showDateNote(); };
+
   /* ---------- GPS del punto ---------- */
   function showGps(){
     const g = state.gps;
@@ -754,7 +832,7 @@ footer .inner{max-width:640px; margin:0 auto}
     }, {enableHighAccuracy:true, timeout:30000, maximumAge:0});
   };
   $('clear').onclick = () => {
-    if(confirm('¿Empezar un punto nuevo? Se borran la lista y el nombre del punto. Tus correcciones y especies habituales se mantienen. Descargá antes el CSV si lo necesitás.')){
+    if(confirm('¿Empezar un punto nuevo? Se borran la lista, el nombre del punto y el GPS. La fecha se mantiene. Tus correcciones y especies habituales se mantienen. Descargá antes el CSV si lo necesitás.')){
       state.log = []; state.point = ''; state.gps = null; showGps(); $('point').value = ''; buf = ''; prevTokens = [];
       lastFinal = ''; $('heard').textContent = ''; save(); render();
     }
@@ -794,6 +872,7 @@ footer .inner{max-width:640px; margin:0 auto}
 
   render();
   showGps();
+  showDateNote();
   loadBaseList();
 })();
 </script>
