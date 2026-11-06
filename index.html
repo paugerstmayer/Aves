@@ -32,15 +32,38 @@ body{
 header{background:var(--marsh); color:var(--on-marsh); padding:18px 16px 16px}
 header h1{margin:0 0 4px; font:700 1.3rem/1.2 Georgia,"Times New Roman",serif}
 #totals{margin:0; font-size:1.05rem}
-.point{padding:14px 16px 0}
-.point label{display:block; color:var(--muted); font-size:.9rem; margin-bottom:4px}
-.point .row{margin-top:8px}
-.point input[type=date]{max-width:240px}
+
+/* ---------- tabs ---------- */
+.tabs{display:flex; background:var(--marsh); padding:0 16px}
+.tab{
+  flex:1; padding:10px 8px; border:0; background:none; color:var(--on-marsh);
+  font:600 .95rem/1.2 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  border-bottom:3px solid transparent; cursor:pointer; opacity:.65; transition:opacity .15s;
+}
+.tab[aria-selected=true]{opacity:1; border-bottom-color:var(--reed)}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* ---------- panel punto ---------- */
+.setup-body{padding:16px}
+.setup-body label{display:block; color:var(--muted); font-size:.9rem; margin-bottom:4px; margin-top:14px}
+.setup-body label:first-child{margin-top:0}
+.gpsinfo{margin:6px 0 0; color:var(--muted); font-size:.9rem}
+.setup-body textarea{min-height:90px; resize:vertical}
+
+/* ---------- panel dictado ---------- */
+.point-banner{
+  background:var(--surface); border-bottom:1px solid var(--line);
+  padding:10px 16px; display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;
+}
+.point-banner strong{font-size:1rem}
+.point-banner span{color:var(--muted); font-size:.88rem}
+.point-banner button{margin-left:auto; font-size:.85rem; background:none; border:0; padding:4px 8px; color:var(--muted); text-decoration:underline; cursor:pointer}
+
 .check{display:flex; gap:10px; align-items:center; min-height:44px}
 .check input{width:22px; height:22px}
 #audioList li{flex-wrap:wrap}
 #audioList audio{width:100%}
-.gpsinfo{margin:6px 0 0; color:var(--muted); font-size:.9rem}
 .bar-top{display:flex; gap:8px; align-items:center; justify-content:space-between; padding:14px 16px 6px}
 .bar-top label{color:var(--muted); font-size:.9rem}
 select,input[type=text],input[type=date],textarea{
@@ -48,7 +71,6 @@ select,input[type=text],input[type=date],textarea{
   border:1.5px solid var(--line); border-radius:10px; padding:10px 12px; width:100%;
 }
 select{width:auto}
-textarea{min-height:110px; resize:vertical}
 button{font:inherit; cursor:pointer; color:var(--ink)}
 button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{
   outline:3px solid var(--reed); outline-offset:2px;
@@ -88,6 +110,7 @@ summary{padding:14px 16px; cursor:pointer; font-weight:600}
 }
 .btn.alt{background:none; color:var(--ink); border:1.5px solid var(--line)}
 .btn.danger{background:none; color:var(--rec); border:1.5px solid var(--rec)}
+.btn.full{width:100%}
 .chips{list-style:none; margin:0; padding:0; display:grid; gap:6px}
 .chips li{display:flex; justify-content:space-between; align-items:center; gap:8px; border-bottom:1px solid var(--line); padding:4px 0}
 .chips button{background:none; border:0; font-size:1.3rem; padding:6px 10px; color:var(--rec)}
@@ -107,6 +130,12 @@ footer .inner{max-width:640px; margin:0 auto}
   #mic[aria-pressed=true]{animation:pulse 1.6s ease-in-out infinite}
   @keyframes pulse{50%{opacity:.82}}
 }
+/* footer solo visible en pestaña dictado */
+footer{display:none}
+body.tab-dictar footer{display:block}
+body.tab-dictar{padding-bottom:calc(214px + env(safe-area-inset-bottom))}
+body.tab-punto{padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+
 #pocket{
   position:fixed; inset:0; z-index:100; background:#000; color:#8A9A94;
   display:flex; flex-direction:column; justify-content:center; align-items:center; gap:10px;
@@ -118,117 +147,159 @@ footer .inner{max-width:640px; margin:0 auto}
 #pocketBar{width:min(260px,70%); height:6px; border-radius:3px; background:#1B2622; overflow:hidden; margin-top:14px}
 #pocketBar span{display:block; height:100%; width:0; background:#E3B02A}
 #pocket.holding #pocketBar span{width:100%; transition:width 3s linear}
+
+/* modal "continuás o nuevo punto" */
+#resumeModal{
+  position:fixed; inset:0; z-index:200; background:rgba(0,0,0,.55);
+  display:flex; align-items:center; justify-content:center; padding:24px;
+}
+#resumeModal[hidden]{display:none}
+#resumeBox{
+  background:var(--surface); border-radius:16px; padding:24px; max-width:380px; width:100%;
+  display:grid; gap:12px;
+}
+#resumeBox h2{margin:0; font-size:1.1rem}
+#resumeBox p{margin:0; color:var(--muted); font-size:.92rem}
 </style>
 </head>
-<body>
+<body class="tab-punto">
 <div class="wrap">
   <header>
     <h1>Aves dictadas</h1>
     <p id="totals" aria-live="polite">0 especies, 0 individuos</p>
   </header>
 
+  <!-- tabs -->
+  <div class="tabs" role="tablist">
+    <button class="tab" id="tabPunto" role="tab" aria-selected="true" aria-controls="panelPunto">📋 Punto</button>
+    <button class="tab" id="tabDictar" role="tab" aria-selected="false" aria-controls="panelDictar">🎙 Dictar</button>
+  </div>
+
   <div id="status" role="status"></div>
 
-  <div class="point">
-    <label for="point">Punto de muestreo (es el nombre del archivo al descargar)</label>
-    <input type="text" id="point" placeholder="Ej.: Laguna Las Perdices 1" autocomplete="off">
-    <label for="fecha" style="margin-top:12px">Fecha del muestreo</label>
-    <input type="date" id="fecha">
-    <p class="gpsinfo" id="dateNote"></p>
-    <div class="row"><button class="btn alt" id="gpsBtn" type="button">Tomar GPS del punto</button></div>
-    <p class="gpsinfo" id="gpsInfo" aria-live="polite">Sin GPS en este punto.</p>
-  </div>
+  <!-- PANEL 1: datos del punto -->
+  <div id="panelPunto" class="tab-panel active" role="tabpanel">
+    <div class="setup-body">
+      <label for="point">Nombre del punto <span style="color:var(--rec)">*</span></label>
+      <input type="text" id="point" placeholder="Ej.: Laguna Las Perdices 1" autocomplete="off">
 
-  <div class="bar-top">
-    <label>Orden
-      <select id="sort" aria-label="Orden de la lista">
-        <option value="recent">Último visto primero</option>
-        <option value="alpha">Alfabético</option>
-      </select>
-    </label>
-    <button class="link" id="undo" type="button">Deshacer último</button>
-  </div>
+      <label for="fecha">Fecha del muestreo</label>
+      <input type="date" id="fecha">
+      <p class="gpsinfo" id="dateNote"></p>
 
-  <ul id="list"></ul>
-  <div id="empty" class="empty">
-    <p><strong>Todavía no hay observaciones.</strong></p>
-    <p>Tocá <strong>Dictar</strong> y decí cada especie seguida de su cantidad, por ejemplo: «tijereta dos, perdiz uno, tijereta uno». Si repetís una especie, se suman los individuos.</p>
-  </div>
+      <label>GPS del punto</label>
+      <button class="btn alt" id="gpsBtn" type="button" style="width:100%">Tomar GPS</button>
+      <p class="gpsinfo" id="gpsInfo" aria-live="polite">Sin GPS en este punto.</p>
 
-  <details>
-    <summary>Pegar texto ya transcripto</summary>
-    <div class="body">
-      <p>Pegá una transcripción con el mismo orden: especie y después el número. Se suma a la lista.</p>
-      <textarea id="paste" placeholder="tijereta dos, perdiz uno, tijereta uno"></textarea>
-      <button class="btn" id="pasteGo" type="button">Contar</button>
-    </div>
-  </details>
+      <label for="comentarios">Comentarios / notas</label>
+      <textarea id="comentarios" placeholder="Condiciones climáticas, observaciones generales…"></textarea>
 
-  <details>
-    <summary>Agregar especie a mano</summary>
-    <div class="body">
-      <div class="row">
-        <input type="text" id="manual" placeholder="Nombre de la especie" autocomplete="off">
-        <button class="btn" id="manualGo" type="button">Agregar</button>
+      <div style="margin-top:20px">
+        <button class="btn full" id="goDict" type="button">Crear punto y empezar a dictar →</button>
       </div>
     </div>
-  </details>
+  </div>
 
-  <details>
-    <summary>Mis especies habituales</summary>
-    <div class="body">
-      <p id="baseInfo"></p>
-      <p>Tus agregados personales, uno por línea. Se suman a la lista base: si el dictado escribe un nombre parecido, se corrige solo.</p>
-      <textarea id="known" placeholder="Tijereta&#10;Perdiz chica&#10;Pecho amarillo"></textarea>
+  <!-- PANEL 2: dictado -->
+  <div id="panelDictar" class="tab-panel" role="tabpanel">
+    <!-- banner con resumen del punto activo -->
+    <div class="point-banner">
+      <strong id="bannerNombre">—</strong>
+      <span id="bannerFecha"></span>
+      <button id="bannerEdit" type="button">Editar datos</button>
     </div>
-  </details>
 
-  <details>
-    <summary>Correcciones de nombres</summary>
-    <div class="body">
-      <p>Cuando el dictado escribe mal un nombre, indicá cómo lo escucha y cómo querés que figure. También se crean tocando un nombre de la lista para renombrarlo.</p>
-      <input type="text" id="aFrom" placeholder="Cómo lo escribe el dictado" autocomplete="off">
-      <input type="text" id="aTo" placeholder="Cómo querés que figure" autocomplete="off">
-      <button class="btn" id="aAdd" type="button">Guardar corrección</button>
-      <ul class="chips" id="aliases"></ul>
+    <div class="bar-top">
+      <label>Orden
+        <select id="sort" aria-label="Orden de la lista">
+          <option value="recent">Último visto primero</option>
+          <option value="alpha">Alfabético</option>
+        </select>
+      </label>
+      <button class="link" id="undo" type="button">Deshacer último</button>
     </div>
-  </details>
 
-  <details>
-    <summary>Qué escuchó el dictado</summary>
-    <div class="body">
-      <p>Las últimas frases tal como las escribió el dictado, y cómo las interpretó la app. Sirve para saber si el error viene de la voz o del conteo.</p>
-      <ul id="heardLog"></ul>
-      <p>Resultados tal como los entregó Chrome (para diagnóstico):</p>
-      <ul id="rawLog"></ul>
+    <ul id="list"></ul>
+    <div id="empty" class="empty">
+      <p><strong>Todavía no hay observaciones.</strong></p>
+      <p>Tocá <strong>Dictar</strong> y decí cada especie seguida de su cantidad, por ejemplo: «tijereta dos, perdiz uno, tijereta uno». Si repetís una especie, se suman los individuos.</p>
     </div>
-  </details>
 
-  <details>
-    <summary>Audio de respaldo (experimental)</summary>
-    <div class="body">
-      <p>Intenta grabar el audio mientras dictás, para poder revisarlo si la lista tiene dudas. En muchos celulares Android el micrófono no se puede usar para las dos cosas a la vez: el dictado puede fallar o el audio puede salir en silencio. Probalo primero con una frase corta.</p>
-      <label class="check"><input type="checkbox" id="audioOn"> Guardar audio al dictar</label>
-      <p><strong>Por ahora los audios solo existen mientras la app está abierta. Descargá cada uno al terminar el punto.</strong></p>
-      <ul class="chips" id="audioList"></ul>
-    </div>
-  </details>
+    <details>
+      <summary>Pegar texto ya transcripto</summary>
+      <div class="body">
+        <p>Pegá una transcripción con el mismo orden: especie y después el número. Se suma a la lista.</p>
+        <textarea id="paste" placeholder="tijereta dos, perdiz uno, tijereta uno"></textarea>
+        <button class="btn" id="pasteGo" type="button">Contar</button>
+      </div>
+    </details>
 
-  <details>
-    <summary>Exportar y borrar</summary>
-    <div class="body">
-      <button class="btn" id="copy" type="button">Copiar lista</button>
-      <button class="btn" id="xlsx" type="button">Descargar Excel (.xlsx)</button>
-      <button class="btn alt" id="csv" type="button">Descargar CSV</button>
-      <button class="btn alt" id="backup" type="button">Guardar copia de mis nombres (archivo)</button>
-      <button class="btn alt" id="restore" type="button">Cargar copia guardada</button>
-      <input type="file" id="restoreFile" accept=".json,application/json" hidden>
-      <p>La copia guarda tus correcciones de nombres y tu lista de especies habituales, para no perderlas si cambiás de celu o borrás los datos del navegador.</p>
-      <button class="btn danger" id="clear" type="button">Empezar nuevo punto (borra la lista)</button>
-      <p>Versión 15</p>
-    </div>
-  </details>
-</div>
+    <details>
+      <summary>Agregar especie a mano</summary>
+      <div class="body">
+        <div class="row">
+          <input type="text" id="manual" placeholder="Nombre de la especie" autocomplete="off">
+          <button class="btn" id="manualGo" type="button">Agregar</button>
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary>Mis especies habituales</summary>
+      <div class="body">
+        <p id="baseInfo"></p>
+        <p>Tus agregados personales, uno por línea. Se suman a la lista base: si el dictado escribe un nombre parecido, se corrige solo.</p>
+        <textarea id="known" placeholder="Tijereta&#10;Perdiz chica&#10;Pecho amarillo"></textarea>
+      </div>
+    </details>
+
+    <details>
+      <summary>Correcciones de nombres</summary>
+      <div class="body">
+        <p>Cuando el dictado escribe mal un nombre, indicá cómo lo escucha y cómo querés que figure. También se crean tocando un nombre de la lista para renombrarlo.</p>
+        <input type="text" id="aFrom" placeholder="Cómo lo escribe el dictado" autocomplete="off">
+        <input type="text" id="aTo" placeholder="Cómo querés que figure" autocomplete="off">
+        <button class="btn" id="aAdd" type="button">Guardar corrección</button>
+        <ul class="chips" id="aliases"></ul>
+      </div>
+    </details>
+
+    <details>
+      <summary>Qué escuchó el dictado</summary>
+      <div class="body">
+        <p>Las últimas frases tal como las escribió el dictado, y cómo las interpretó la app. Sirve para saber si el error viene de la voz o del conteo.</p>
+        <ul id="heardLog"></ul>
+        <p>Resultados tal como los entregó Chrome (para diagnóstico):</p>
+        <ul id="rawLog"></ul>
+      </div>
+    </details>
+
+    <details>
+      <summary>Audio de respaldo (experimental)</summary>
+      <div class="body">
+        <p>Intenta grabar el audio mientras dictás, para poder revisarlo si la lista tiene dudas. En muchos celulares Android el micrófono no se puede usar para las dos cosas a la vez: el dictado puede fallar o el audio puede salir en silencio. Probalo primero con una frase corta.</p>
+        <label class="check"><input type="checkbox" id="audioOn"> Guardar audio al dictar</label>
+        <p><strong>Por ahora los audios solo existen mientras la app está abierta. Descargá cada uno al terminar el punto.</strong></p>
+        <ul class="chips" id="audioList"></ul>
+      </div>
+    </details>
+
+    <details>
+      <summary>Exportar y borrar</summary>
+      <div class="body">
+        <button class="btn" id="copy" type="button">Copiar lista</button>
+        <button class="btn" id="xlsx" type="button">Descargar Excel (.xlsx)</button>
+        <button class="btn alt" id="csv" type="button">Descargar CSV</button>
+        <button class="btn alt" id="backup" type="button">Guardar copia de mis nombres (archivo)</button>
+        <button class="btn alt" id="restore" type="button">Cargar copia guardada</button>
+        <input type="file" id="restoreFile" accept=".json,application/json" hidden>
+        <p>La copia guarda tus correcciones de nombres y tu lista de especies habituales, para no perderlas si cambiás de celu o borrás los datos del navegador.</p>
+        <button class="btn danger" id="clear" type="button">Terminar punto y empezar uno nuevo</button>
+        <p>Versión 16</p>
+      </div>
+    </details>
+  </div><!-- /panelDictar -->
+</div><!-- /wrap -->
 
 <footer>
   <div class="inner">
@@ -246,629 +317,624 @@ footer .inner{max-width:640px; margin:0 auto}
   <div id="pocketBar"><span></span></div>
 </div>
 
+<!-- modal: continuar punto anterior o crear nuevo -->
+<div id="resumeModal" hidden role="dialog" aria-modal="true" aria-labelledby="resumeTitle">
+  <div id="resumeBox">
+    <h2 id="resumeTitle">Ya tenés un punto en curso</h2>
+    <p id="resumeDesc"></p>
+    <button class="btn full" id="resumeContinue" type="button">Continuar ese punto</button>
+    <button class="btn alt full" id="resumeNew" type="button">Crear punto nuevo</button>
+  </div>
+</div>
+
 <script>
 (() => {
   const $ = id => document.getElementById(id);
 
-  /* ---------- almacenamiento (si el navegador no deja guardar, sigue funcionando) ---------- */
+  /* ---------- almacenamiento ---------- */
   const store = {
     get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
     set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
   };
   const state = {
-    log: store.get('aves.log', []),
-    aliases: store.get('aves.aliases', []),
-    known: store.get('aves.known', []),
-    point: store.get('aves.point', ''),
-    gps: store.get('aves.gps', null),
-    date: store.get('aves.date', ''),
-    audioOn: store.get('aves.audioOn', false),
+    log:          store.get('aves.log', []),
+    aliases:      store.get('aves.aliases', []),
+    known:        store.get('aves.known', []),
+    point:        store.get('aves.point', ''),
+    gps:          store.get('aves.gps', null),
+    date:         store.get('aves.date', ''),
+    comentarios:  store.get('aves.comentarios', ''),
+    audioOn:      store.get('aves.audioOn', false),
+    pointCreated: store.get('aves.pointCreated', false),
     sort: 'recent'
   };
-  const save = () => { store.set('aves.log', state.log); store.set('aves.aliases', state.aliases); store.set('aves.known', state.known); store.set('aves.point', state.point); store.set('aves.gps', state.gps); store.set('aves.date', state.date); store.set('aves.audioOn', state.audioOn); };
+  const save = () => {
+    store.set('aves.log', state.log);
+    store.set('aves.aliases', state.aliases);
+    store.set('aves.known', state.known);
+    store.set('aves.point', state.point);
+    store.set('aves.gps', state.gps);
+    store.set('aves.date', state.date);
+    store.set('aves.comentarios', state.comentarios);
+    store.set('aves.audioOn', state.audioOn);
+    store.set('aves.pointCreated', state.pointCreated);
+  };
 
   /* ---------- utilidades de texto ---------- */
-  const norm = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[-\u2010\u2013]/g, ' ').replace(/\s+/g, ' ').trim();
-  const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-  function lev(a, b){
-    const m = a.length, n = b.length;
-    if(!m) return n; if(!n) return m;
-    let p = Array.from({length:n+1}, (_, j) => j);
-    for(let i = 1; i <= m; i++){
-      const c = [i];
-      for(let j = 1; j <= n; j++) c[j] = Math.min(p[j]+1, c[j-1]+1, p[j-1] + (a[i-1] === b[j-1] ? 0 : 1));
-      p = c;
-    }
+  const norm = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[-\u2010\u2013]/g,' ').replace(/\s+/g,' ').trim();
+  const cap  = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+  function lev(a,b){
+    const m=a.length,n=b.length;
+    if(!m)return n;if(!n)return m;
+    let p=Array.from({length:n+1},(_,j)=>j);
+    for(let i=1;i<=m;i++){const c=[i];for(let j=1;j<=n;j++)c[j]=Math.min(p[j]+1,c[j-1]+1,p[j-1]+(a[i-1]===b[j-1]?0:1));p=c;}
     return p[n];
   }
 
   /* ---------- números en español ---------- */
-  const UNITS = {un:1,uno:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9};
-  const TEENS = {diez:10,once:11,doce:12,trece:13,catorce:14,quince:15,dieciseis:16,diecisiete:17,dieciocho:18,diecinueve:19,
+  const UNITS={un:1,uno:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9};
+  const TEENS={diez:10,once:11,doce:12,trece:13,catorce:14,quince:15,dieciseis:16,diecisiete:17,dieciocho:18,diecinueve:19,
     veinte:20,veintiun:21,veintiuno:21,veintiuna:21,veintidos:22,veintitres:23,veinticuatro:24,veinticinco:25,veintiseis:26,
     veintisiete:27,veintiocho:28,veintinueve:29};
-  const TENS = {treinta:30,cuarenta:40,cincuenta:50,sesenta:60,setenta:70,ochenta:80,noventa:90};
-  function readNumber(t, i){
-    const w = norm(t[i]);
-    if(/^\d+$/.test(w)) return {v:parseInt(w, 10), next:i+1};
-    if(TENS[w] !== undefined){
-      if(t[i+1] && norm(t[i+1]) === 'y' && t[i+2] && UNITS[norm(t[i+2])] !== undefined)
-        return {v:TENS[w] + UNITS[norm(t[i+2])], next:i+3};
-      return {v:TENS[w], next:i+1};
+  const TENS={treinta:30,cuarenta:40,cincuenta:50,sesenta:60,setenta:70,ochenta:80,noventa:90};
+  function readNumber(t,i){
+    const w=norm(t[i]);
+    if(/^\d+$/.test(w))return{v:parseInt(w,10),next:i+1};
+    if(TENS[w]!==undefined){
+      if(t[i+1]&&norm(t[i+1])==='y'&&t[i+2]&&UNITS[norm(t[i+2])]!==undefined)return{v:TENS[w]+UNITS[norm(t[i+2])],next:i+3};
+      return{v:TENS[w],next:i+1};
     }
-    if(UNITS[w] !== undefined) return {v:UNITS[w], next:i+1};
-    if(TEENS[w] !== undefined) return {v:TEENS[w], next:i+1};
-    if(w === 'cien' || w === 'ciento') return {v:100, next:i+1};
+    if(UNITS[w]!==undefined)return{v:UNITS[w],next:i+1};
+    if(TEENS[w]!==undefined)return{v:TEENS[w],next:i+1};
+    if(w==='cien'||w==='ciento')return{v:100,next:i+1};
     return null;
   }
 
-  /* ---------- interpretar lo dictado: "especie número" ---------- */
-  const FILLER = new Set(['y','tambien','otra','otro','otros','otras','vi','vimos','ahi','luego','despues','mas','nueva','nuevo','nuevos','nuevas']);
-  const DROP = new Set(['individuo','individuos','ejemplar','ejemplares']);
+  /* ---------- interpretar dictado ---------- */
+  const FILLER=new Set(['y','tambien','otra','otro','otros','otras','vi','vimos','ahi','luego','despues','mas','nueva','nuevo','nuevos','nuevas']);
+  const DROP=new Set(['individuo','individuos','ejemplar','ejemplares']);
   function parse(text){
-    const toks = text.replace(/[,;:.!?¡¿()]/g, ' ').split(/\s+/).filter(Boolean);
-    const entries = []; let name = []; let lead = null; let i = 0;
-    while(i < toks.length){
-      const num = readNumber(toks, i);
+    const toks=text.replace(/[,;:.!?¡¿()]/g,' ').split(/\s+/).filter(Boolean);
+    const entries=[];let name=[];let lead=null;let i=0;
+    while(i<toks.length){
+      const num=readNumber(toks,i);
       if(num){
-        if(name.length){ entries.push({name:name.join(' '), n:num.v}); name = []; }
-        else if(entries.length === 0 && lead === null) lead = num.v;
-        i = num.next; continue;
+        if(name.length){entries.push({name:name.join(' '),n:num.v});name=[];}
+        else if(entries.length===0&&lead===null)lead=num.v;
+        i=num.next;continue;
       }
-      const w = norm(toks[i]);
-      if(FILLER.has(w) && !name.length){ i++; continue; }
-      if(!DROP.has(w)) name.push(toks[i].toLowerCase());
+      const w=norm(toks[i]);
+      if(FILLER.has(w)&&!name.length){i++;continue;}
+      if(!DROP.has(w))name.push(toks[i].toLowerCase());
       i++;
     }
-    return {entries, lead};
+    return{entries,lead};
   }
 
-  /* ---------- nombres: correcciones y lista habitual ---------- */
-  const applyAlias = name => { const k = norm(name); const a = state.aliases.find(x => norm(x.from) === k); return a ? a.to : name; };
-  /* ---------- lista base de especies (especies.csv: la misma para todos los usuarios) ---------- */
-  const base = {list:[], byKey:new Map(), variants:new Map()};
-  function parseCSV(text, d){
-    const rows = []; let row = [], cell = '', q = false;
-    for(let i = 0; i < text.length; i++){
-      const c = text[i];
-      if(q){
-        if(c === '"'){ if(text[i+1] === '"'){ cell += '"'; i++; } else q = false; }
-        else cell += c;
-      } else if(c === '"') q = true;
-      else if(c === d){ row.push(cell); cell = ''; }
-      else if(c === '\n' || c === '\r'){
-        if(c === '\r' && text[i+1] === '\n') i++;
-        row.push(cell); cell = '';
-        if(row.some(x => x.trim())) rows.push(row);
-        row = [];
-      } else cell += c;
+  /* ---------- lista base de especies ---------- */
+  const applyAlias=name=>{const k=norm(name);const a=state.aliases.find(x=>norm(x.from)===k);return a?a.to:name;};
+  const base={list:[],byKey:new Map(),variants:new Map()};
+  function parseCSV(text,d){
+    const rows=[];let row=[],cell='',q=false;
+    for(let i=0;i<text.length;i++){
+      const c=text[i];
+      if(q){if(c==='"'){if(text[i+1]==='"'){cell+='"';i++;}else q=false;}else cell+=c;}
+      else if(c==='"')q=true;
+      else if(c===d){row.push(cell);cell='';}
+      else if(c==='\n'||c==='\r'){
+        if(c==='\r'&&text[i+1]==='\n')i++;
+        row.push(cell);cell='';
+        if(row.some(x=>x.trim()))rows.push(row);row=[];
+      }else cell+=c;
     }
-    row.push(cell); if(row.some(x => x.trim())) rows.push(row);
+    row.push(cell);if(row.some(x=>x.trim()))rows.push(row);
     return rows;
   }
   function loadBase(text){
-    text = text.replace(/^\ufeff/, '');
-    if(/^\s*</.test(text)) return false;                       // no es un CSV (por ejemplo, una página de error)
-    const first = text.split(/\r?\n/)[0] || '';
-    const d = (first.match(/;/g) || []).length >= (first.match(/,/g) || []).length ? ';' : ',';
-    const rows = parseCSV(text, d);
-    if(rows.length < 2) return false;
-    const head = rows[0].map(norm);
-    const find = (...keys) => head.findIndex(h => keys.some(k => h.includes(k)));
-    let ic = find('comun'), is = find('cientif'), iv = find('escuch', 'variant', 'alias');
-    if(ic < 0){ ic = 0; if(is < 0) is = 1; }
-    const list = [], byKey = new Map(), variants = new Map();
-    rows.slice(1).forEach(r => {
-      const common = (r[ic] || '').trim(); if(!common) return;
-      const sp = {common, sci:(is >= 0 ? (r[is] || '') : '').trim()};
-      list.push(sp); byKey.set(norm(common), sp);
-      if(iv >= 0) (r[iv] || '').split(/[,|]/).map(s => norm(s)).filter(Boolean).forEach(v => variants.set(v, sp));
+    text=text.replace(/^\ufeff/,'');
+    if(/^\s*</.test(text))return false;
+    const first=text.split(/\r?\n/)[0]||'';
+    const d=(first.match(/;/g)||[]).length>=(first.match(/,/g)||[]).length?';':',';
+    const rows=parseCSV(text,d);
+    if(rows.length<2)return false;
+    const head=rows[0].map(norm);
+    const find=(...keys)=>head.findIndex(h=>keys.some(k=>h.includes(k)));
+    let ic=find('comun'),is=find('cientif'),iv=find('escuch','variant','alias');
+    if(ic<0){ic=0;if(is<0)is=1;}
+    const list=[],byKey=new Map(),variants=new Map();
+    rows.slice(1).forEach(r=>{
+      const common=(r[ic]||'').trim();if(!common)return;
+      const sp={common,sci:(is>=0?(r[is]||''):'').trim()};
+      list.push(sp);byKey.set(norm(common),sp);
+      if(iv>=0)(r[iv]||'').split(/[,|]/).map(s=>norm(s)).filter(Boolean).forEach(v=>variants.set(v,sp));
     });
-    if(!list.length) return false;
-    base.list = list; base.byKey = byKey; base.variants = variants;
+    if(!list.length)return false;
+    base.list=list;base.byKey=byKey;base.variants=variants;
     return true;
   }
-  const sciOf = label => { const sp = base.byKey.get(norm(label)); return sp ? sp.sci : ''; };
+  const sciOf=label=>{const sp=base.byKey.get(norm(label));return sp?sp.sci:'';};
   async function loadBaseList(){
-    let text = null;
-    try{
-      const res = await fetch('especies.csv', {cache:'no-cache'});
-      if(res.ok){ text = await res.text(); }
-    }catch(e){}
-    let ok = text !== null && loadBase(text);
-    if(ok) store.set('aves.base', text);
-    else { const saved = store.get('aves.base', null); ok = !!saved && loadBase(saved); }
-    $('baseInfo').textContent = ok ? 'Lista base cargada: ' + base.list.length + ' especies.' : 'No hay lista base cargada.';
+    let text=null;
+    try{const res=await fetch('especies.csv',{cache:'no-cache'});if(res.ok)text=await res.text();}catch(e){}
+    let ok=text!==null&&loadBase(text);
+    if(ok)store.set('aves.base',text);
+    else{const saved=store.get('aves.base',null);ok=!!saved&&loadBase(saved);}
+    $('baseInfo').textContent=ok?'Lista base cargada: '+base.list.length+' especies.':'No hay lista base cargada.';
     render();
   }
 
   function snap(name){
-    const k = norm(name);
-    const v = base.variants.get(k); if(v) return v.common;       // error típico del dictado ya conocido
-    const exact = base.byKey.get(k); if(exact) return exact.common;
-    let best = null, bd = 99;
-    const consider = s => {
-      const sk = norm(s); if(!sk || Math.abs(sk.length - k.length) > 2) return;
-      const d = sk === k ? 0 : lev(sk, k);
-      if(d < bd){ bd = d; best = s; }
-    };
+    const k=norm(name);
+    const v=base.variants.get(k);if(v)return v.common;
+    const exact=base.byKey.get(k);if(exact)return exact.common;
+    let best=null,bd=99;
+    const consider=s=>{const sk=norm(s);if(!sk||Math.abs(sk.length-k.length)>2)return;const d=sk===k?0:lev(sk,k);if(d<bd){bd=d;best=s;}};
     state.known.forEach(consider);
-    base.list.forEach(sp => consider(sp.common));
-    const lim = k.length <= 5 ? 0 : k.length <= 9 ? 1 : 2;
-    return best && bd <= lim ? best : name;
+    base.list.forEach(sp=>consider(sp.common));
+    const lim=k.length<=5?0:k.length<=9?1:2;
+    return best&&bd<=lim?best:name;
   }
-  const canonical = raw => cap(applyAlias(snap(applyAlias(raw))));
-  // Todo nombre corregido pasa a la lista de habituales, así también se corrigen variantes parecidas.
+  const canonical=raw=>cap(applyAlias(snap(applyAlias(raw))));
   function addKnown(name){
-    if(!name || state.known.some(k => norm(k) === norm(name))) return;
-    state.known.push(name);
-    $('known').value = state.known.join('\n');
+    if(!name||state.known.some(k=>norm(k)===norm(name)))return;
+    state.known.push(name);$('known').value=state.known.join('\n');
   }
-  const flash = t => { msg(t); setTimeout(() => msg(''), 3500); };
+  const flash=t=>{msg(t);setTimeout(()=>msg(''),3500);};
 
   function aggregate(){
-    const m = new Map(), cache = new Map();
-    state.log.forEach((e, idx) => {
-      if(!cache.has(e.name)) cache.set(e.name, canonical(e.name));
-      const label = cache.get(e.name); const k = norm(label);
-      const r = m.get(k) || {label, n:0, last:0};
-      r.n += e.n; r.last = idx; m.set(k, r);
+    const m=new Map(),cache=new Map();
+    state.log.forEach((e,idx)=>{
+      if(!cache.has(e.name))cache.set(e.name,canonical(e.name));
+      const label=cache.get(e.name);const k=norm(label);
+      const r=m.get(k)||{label,n:0,last:0};
+      r.n+=e.n;r.last=idx;m.set(k,r);
     });
-    return [...m.values()].filter(r => r.n > 0);
+    return[...m.values()].filter(r=>r.n>0);
   }
 
   function addFromText(text){
-    const {entries} = parse(text);
-    entries.forEach(e => state.log.push({name:e.name, n:e.n}));
-    save(); render();
+    const{entries}=parse(text);
+    entries.forEach(e=>state.log.push({name:e.name,n:e.n}));
+    save();render();
     return entries.length;
   }
 
   /* ---------- pantalla ---------- */
-  function msg(text){ const s = $('status'); s.textContent = text; s.style.display = text ? 'block' : 'none'; }
+  function msg(text){const s=$('status');s.textContent=text;s.style.display=text?'block':'none';}
 
   function render(){
-    const rows = aggregate();
-    rows.sort(state.sort === 'alpha' ? (a, b) => a.label.localeCompare(b.label, 'es') : (a, b) => b.last - a.last);
-    const list = $('list'); list.textContent = '';
-    rows.forEach(r => {
-      const li = document.createElement('li');
-      const nameBtn = document.createElement('button');
-      nameBtn.type = 'button'; nameBtn.className = 'name'; nameBtn.textContent = r.label;
-      const sci = sciOf(r.label);
-      if(sci){ const s = document.createElement('span'); s.className = 'sci'; s.textContent = sci; nameBtn.append(s); }
-      nameBtn.setAttribute('aria-label', 'Renombrar ' + r.label);
-      nameBtn.onclick = () => {
-        const nuevo = prompt('Nombre correcto para «' + r.label + '» (también corrige futuros dictados):', r.label);
-        if(nuevo && nuevo.trim() && norm(nuevo) !== norm(r.label)){
-          state.aliases.push({from:r.label, to:nuevo.trim()}); addKnown(nuevo.trim()); save(); render();
+    const rows=aggregate();
+    rows.sort(state.sort==='alpha'?(a,b)=>a.label.localeCompare(b.label,'es'):(a,b)=>b.last-a.last);
+    const list=$('list');list.textContent='';
+    rows.forEach(r=>{
+      const li=document.createElement('li');
+      const nameBtn=document.createElement('button');
+      nameBtn.type='button';nameBtn.className='name';nameBtn.textContent=r.label;
+      const sci=sciOf(r.label);
+      if(sci){const s=document.createElement('span');s.className='sci';s.textContent=sci;nameBtn.append(s);}
+      nameBtn.setAttribute('aria-label','Renombrar '+r.label);
+      nameBtn.onclick=()=>{
+        const nuevo=prompt('Nombre correcto para «'+r.label+'» (también corrige futuros dictados):',r.label);
+        if(nuevo&&nuevo.trim()&&norm(nuevo)!==norm(r.label)){
+          state.aliases.push({from:r.label,to:nuevo.trim()});addKnown(nuevo.trim());save();render();
         }
       };
-      const minus = document.createElement('button');
-      minus.type = 'button'; minus.className = 'step'; minus.textContent = '−'; minus.setAttribute('aria-label', 'Restar uno a ' + r.label);
-      minus.onclick = () => { state.log.push({name:r.label, n:-1}); save(); render(); };
-      const count = document.createElement('button');
-      count.type = 'button'; count.className = 'count'; count.textContent = r.n;
-      count.setAttribute('aria-label', 'Cantidad de ' + r.label + ': ' + r.n + '. Tocar para corregir');
-      count.onclick = () => {
-        const v = prompt('Cantidad correcta de «' + r.label + '»:', String(r.n));
-        if(v === null) return;
-        const nv = parseInt(v, 10);
-        if(isNaN(nv) || nv < 0 || nv === r.n) return;
-        state.log.push({name:r.label, n:nv - r.n}); save(); render();
+      const minus=document.createElement('button');
+      minus.type='button';minus.className='step';minus.textContent='−';minus.setAttribute('aria-label','Restar uno a '+r.label);
+      minus.onclick=()=>{state.log.push({name:r.label,n:-1});save();render();};
+      const count=document.createElement('button');
+      count.type='button';count.className='count';count.textContent=r.n;
+      count.setAttribute('aria-label','Cantidad de '+r.label+': '+r.n+'. Tocar para corregir');
+      count.onclick=()=>{
+        const v=prompt('Cantidad correcta de «'+r.label+'»:',String(r.n));
+        if(v===null)return;const nv=parseInt(v,10);
+        if(isNaN(nv)||nv<0||nv===r.n)return;
+        state.log.push({name:r.label,n:nv-r.n});save();render();
       };
-      const plus = document.createElement('button');
-      plus.type = 'button'; plus.className = 'step'; plus.textContent = '+'; plus.setAttribute('aria-label', 'Sumar uno a ' + r.label);
-      plus.onclick = () => { state.log.push({name:r.label, n:1}); save(); render(); };
-      li.append(nameBtn, minus, count, plus);
-      list.append(li);
+      const plus=document.createElement('button');
+      plus.type='button';plus.className='step';plus.textContent='+';plus.setAttribute('aria-label','Sumar uno a '+r.label);
+      plus.onclick=()=>{state.log.push({name:r.label,n:1});save();render();};
+      li.append(nameBtn,minus,count,plus);list.append(li);
     });
-    const total = rows.reduce((s, r) => s + r.n, 0);
-    $('totals').textContent = rows.length + (rows.length === 1 ? ' especie, ' : ' especies, ') + total + (total === 1 ? ' individuo' : ' individuos');
-    $('empty').style.display = rows.length ? 'none' : 'block';
-    $('undo').disabled = !state.log.length;
+    const total=rows.reduce((s,r)=>s+r.n,0);
+    $('totals').textContent=rows.length+(rows.length===1?' especie, ':' especies, ')+total+(total===1?' individuo':' individuos');
+    $('empty').style.display=rows.length?'none':'block';
+    $('undo').disabled=!state.log.length;
 
-    const ul = $('aliases'); ul.textContent = '';
-    state.aliases.forEach((a, idx) => {
-      const li = document.createElement('li');
-      const t = document.createElement('span'); t.textContent = a.from + ' → ' + a.to;
-      const x = document.createElement('button'); x.type = 'button'; x.textContent = '×'; x.setAttribute('aria-label', 'Quitar corrección ' + a.from);
-      x.onclick = () => { state.aliases.splice(idx, 1); save(); render(); };
-      li.append(t, x); ul.append(li);
+    const ul=$('aliases');ul.textContent='';
+    state.aliases.forEach((a,idx)=>{
+      const li=document.createElement('li');
+      const t=document.createElement('span');t.textContent=a.from+' → '+a.to;
+      const x=document.createElement('button');x.type='button';x.textContent='×';x.setAttribute('aria-label','Quitar corrección '+a.from);
+      x.onclick=()=>{state.aliases.splice(idx,1);save();render();};
+      li.append(t,x);ul.append(li);
     });
+
+    // banner en panel dictar
+    $('bannerNombre').textContent = state.point || '(sin nombre)';
+    $('bannerFecha').textContent  = state.date  || '';
+  }
+
+  /* ---------- tabs ---------- */
+  function showTab(tab){
+    const isPunto = (tab === 'punto');
+    $('tabPunto').setAttribute('aria-selected', isPunto ? 'true' : 'false');
+    $('tabDictar').setAttribute('aria-selected', isPunto ? 'false' : 'true');
+    $('panelPunto').classList.toggle('active', isPunto);
+    $('panelDictar').classList.toggle('active', !isPunto);
+    document.body.className = isPunto ? 'tab-punto' : 'tab-dictar';
+  }
+  $('tabPunto').onclick  = () => showTab('punto');
+  $('tabDictar').onclick = () => showTab('dictar');
+  $('bannerEdit').onclick = () => showTab('punto');
+
+  /* ---------- "Crear punto y empezar a dictar" ---------- */
+  $('goDict').onclick = () => {
+    const nombre = $('point').value.trim();
+    if(!nombre){ msg('Ponele un nombre al punto antes de continuar.'); $('point').focus(); return; }
+    msg('');
+    state.pointCreated = true;
+    save();
+    showTab('dictar');
+  };
+
+  /* ---------- modal "continuar o nuevo punto" ---------- */
+  function showResumeModal(){
+    const desc = state.point
+      ? '«' + state.point + '»' + (state.date ? ', ' + state.date : '') + ' — ' + state.log.length + ' registro' + (state.log.length===1?'':'s') + '.'
+      : 'Hay registros guardados del último punto.';
+    $('resumeDesc').textContent = desc;
+    $('resumeModal').hidden = false;
+  }
+  $('resumeContinue').onclick = () => {
+    $('resumeModal').hidden = true;
+    showTab('dictar');
+  };
+  $('resumeNew').onclick = () => {
+    $('resumeModal').hidden = true;
+    // limpiar punto anterior
+    state.log=[]; state.point=''; state.gps=null; state.date=''; state.comentarios=''; state.pointCreated=false;
+    buf=''; prevTokens=[]; lastFinal=''; $('heard').textContent='';
+    // sincronizar campos
+    $('point').value=''; $('fecha').value=''; $('comentarios').value='';
+    showGps(); showDateNote(); save(); render();
+    showTab('punto');
+  };
+
+  /* ---------- al abrir: ¿hay punto en curso? ---------- */
+  if(state.pointCreated && (state.log.length > 0 || state.point)){
+    showResumeModal();
+  } else {
+    showTab('punto');
   }
 
   /* ---------- dictado ---------- */
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let rec = null, want = false, processed = 0, lastFinal = '', wake = null, pocket = false, holdTimer = null;
-  let stopAudio = () => {};
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  let rec=null,want=false,processed=0,lastFinal='',wake=null,pocket=false,holdTimer=null;
+  let stopAudio=()=>{};
 
-  /* El dictado a veces corta una frase en pedazos ("gallineta" / "pico pintado" / "uno").
-     Se juntan y se interpretan recién cuando termina en un número o pasan 3 segundos sin más voz. */
-  let buf = '', bufTimer = null;
-  const heardLog = [], rawLog = [];
-  function logRaw(i, text){
-    rawLog.unshift('#' + i + ' «' + text + '»');
-    if(rawLog.length > 12) rawLog.length = 12;
-    const ul = $('rawLog'); ul.textContent = '';
-    rawLog.forEach(x => { const li = document.createElement('li'); li.textContent = x; ul.append(li); });
+  let buf='',bufTimer=null;
+  const heardLog=[],rawLog=[];
+  function logRaw(i,text){
+    rawLog.unshift('#'+i+' «'+text+'»');if(rawLog.length>12)rawLog.length=12;
+    const ul=$('rawLog');ul.textContent='';
+    rawLog.forEach(x=>{const li=document.createElement('li');li.textContent=x;ul.append(li);});
   }
-  function logHeard(raw, result){
-    heardLog.unshift('«' + raw + '» → ' + result);
-    if(heardLog.length > 10) heardLog.length = 10;
-    const ul = $('heardLog'); ul.textContent = '';
-    heardLog.forEach(x => { const li = document.createElement('li'); li.textContent = x; ul.append(li); });
+  function logHeard(raw,result){
+    heardLog.unshift('«'+raw+'» → '+result);if(heardLog.length>10)heardLog.length=10;
+    const ul=$('heardLog');ul.textContent='';
+    heardLog.forEach(x=>{const li=document.createElement('li');li.textContent=x;ul.append(li);});
   }
   function endsWithNumber(text){
-    const toks = text.replace(/[,;:.!?¡¿()]/g, ' ').split(/\s+/).filter(Boolean);
-    for(let k = Math.max(0, toks.length - 3); k < toks.length; k++){
-      const n = readNumber(toks, k);
-      if(n && n.next === toks.length) return true;
-    }
+    const toks=text.replace(/[,;:.!?¡¿()]/g,' ').split(/\s+/).filter(Boolean);
+    for(let k=Math.max(0,toks.length-3);k<toks.length;k++){const n=readNumber(toks,k);if(n&&n.next===toks.length)return true;}
     return false;
   }
   function flushBuf(){
-    clearTimeout(bufTimer);
-    if(!buf) return;
-    const t = buf; buf = '';
-    const {entries} = parse(t);
-    const interp = entries.length ? entries.map(e => e.name + ' ' + e.n).join(' | ') : 'sin especies';
-    logHeard(t, interp);
-    addFromText(t);
-    $('pocketLast').textContent = 'Último: ' + interp;
-    updatePocket();
-    if(pocket) buzz(60);
+    clearTimeout(bufTimer);if(!buf)return;
+    const t=buf;buf='';
+    const{entries}=parse(t);
+    const interp=entries.length?entries.map(e=>e.name+' '+e.n).join(' | '):'sin especies';
+    logHeard(t,interp);addFromText(t);
+    $('pocketLast').textContent='Último: '+interp;updatePocket();if(pocket)buzz(60);
   }
-  /* Chrome en Android a veces entrega cada resultado con todo el texto acumulado
-     ("gallineta", "gallineta pico", "gallineta pico pintado"). Se toma solo lo nuevo. */
-  let prevTokens = [], prevTime = 0;
-  const toTokens = s => s.replace(/[,;:.!?¡¿()]/g, ' ').split(/\s+/).filter(Boolean);
+  let prevTokens=[],prevTime=0;
+  const toTokens=s=>s.replace(/[,;:.!?¡¿()]/g,' ').split(/\s+/).filter(Boolean);
   function queueText(t){
-    const toks = toTokens(t);
-    if(!toks.length) return;                 // Chrome a veces entrega resultados vacíos
-    const now = Date.now();
-    const same = prevTokens.length === toks.length && prevTokens.every((w, i) => norm(w) === norm(toks[i]));
-    if(same && now - prevTime < 2000){ prevTime = now; return; }   // mismo resultado repetido casi al instante
-    let delta = toks;
-    if(prevTokens.length && toks.length > prevTokens.length && prevTokens.every((w, i) => norm(w) === norm(toks[i]))){
-      delta = toks.slice(prevTokens.length);
-    }
-    prevTokens = toks; prevTime = now;
-    if(!delta.length) return;
-    buf = (buf + ' ' + delta.join(' ')).trim();
+    const toks=toTokens(t);if(!toks.length)return;
+    const now=Date.now();
+    const same=prevTokens.length===toks.length&&prevTokens.every((w,i)=>norm(w)===norm(toks[i]));
+    if(same&&now-prevTime<2000){prevTime=now;return;}
+    let delta=toks;
+    if(prevTokens.length&&toks.length>prevTokens.length&&prevTokens.every((w,i)=>norm(w)===norm(toks[i]))){delta=toks.slice(prevTokens.length);}
+    prevTokens=toks;prevTime=now;
+    if(!delta.length)return;
+    buf=(buf+' '+delta.join(' ')).trim();
     clearTimeout(bufTimer);
-    if(endsWithNumber(buf)) flushBuf(); else bufTimer = setTimeout(flushBuf, 3000);
+    if(endsWithNumber(buf))flushBuf();else bufTimer=setTimeout(flushBuf,3000);
   }
 
-  function setMic(on){
-    const b = $('mic'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.textContent = on ? 'Detener' : 'Dictar';
-  }
+  function setMic(on){const b=$('mic');b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Detener':'Dictar';}
   async function keepAwake(on){
-    try{
-      if(on && navigator.wakeLock){
-        if(!wake || wake.released) wake = await navigator.wakeLock.request('screen');
-      } else if(wake){ await wake.release(); wake = null; }
-    }catch(e){}
+    try{if(on&&navigator.wakeLock){if(!wake||wake.released)wake=await navigator.wakeLock.request('screen');}else if(wake){await wake.release();wake=null;}}catch(e){}
   }
-  // Al volver a la app (por ejemplo después de bloquear y desbloquear), retoma el dictado y la pantalla encendida.
-  document.addEventListener('visibilitychange', () => {
-    if(document.visibilityState === 'visible' && want){
-      keepAwake(true);
-      try{ rec.start(); }catch(e){}
-    }
-  });
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&want){keepAwake(true);try{rec.start();}catch(e){}}});
 
   /* ---------- modo bolsillo ---------- */
-  const buzz = p => { try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} };
+  const buzz=p=>{try{if(navigator.vibrate)navigator.vibrate(p);}catch(e){}};
   function updatePocket(){
-    const rows = aggregate(); const total = rows.reduce((s, r) => s + r.n, 0);
-    $('pocketCount').textContent = rows.length + (rows.length === 1 ? ' especie, ' : ' especies, ') + total + (total === 1 ? ' individuo' : ' individuos');
+    const rows=aggregate();const total=rows.reduce((s,r)=>s+r.n,0);
+    $('pocketCount').textContent=rows.length+(rows.length===1?' especie, ':' especies, ')+total+(total===1?' individuo':' individuos');
   }
-  function pocketAlert(){
-    $('pocketTitle').textContent = 'El dictado se detuvo';
-    buzz([300, 120, 300, 120, 300]);
-  }
+  function pocketAlert(){$('pocketTitle').textContent='El dictado se detuvo';buzz([300,120,300,120,300]);}
   function enterPocket(){
-    pocket = true; $('pocket').hidden = false; updatePocket();
-    if(!want) startRec();
-    $('pocketTitle').textContent = want ? 'Dictando…' : 'El dictado no pudo iniciar';
+    pocket=true;$('pocket').hidden=false;updatePocket();
+    if(!want)startRec();
+    $('pocketTitle').textContent=want?'Dictando…':'El dictado no pudo iniciar';
   }
-  function exitPocket(){
-    clearTimeout(holdTimer); $('pocket').classList.remove('holding');
-    pocket = false; $('pocket').hidden = true; buzz(40);
-  }
-  (() => {
-    const pk = $('pocket');
-    const holdStart = e => { e.preventDefault(); pk.classList.add('holding'); clearTimeout(holdTimer); holdTimer = setTimeout(exitPocket, 3000); };
-    const holdEnd = () => { pk.classList.remove('holding'); clearTimeout(holdTimer); };
-    pk.addEventListener('pointerdown', holdStart);
-    ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => pk.addEventListener(ev, holdEnd));
-    pk.addEventListener('contextmenu', e => e.preventDefault());
+  function exitPocket(){clearTimeout(holdTimer);$('pocket').classList.remove('holding');pocket=false;$('pocket').hidden=true;buzz(40);}
+  (()=>{
+    const pk=$('pocket');
+    const holdStart=e=>{e.preventDefault();pk.classList.add('holding');clearTimeout(holdTimer);holdTimer=setTimeout(exitPocket,3000);};
+    const holdEnd=()=>{pk.classList.remove('holding');clearTimeout(holdTimer);};
+    pk.addEventListener('pointerdown',holdStart);
+    ['pointerup','pointercancel','pointerleave'].forEach(ev=>pk.addEventListener(ev,holdEnd));
+    pk.addEventListener('contextmenu',e=>e.preventDefault());
   })();
   function startRec(){
-    if(!SR){ msg('Este navegador no permite dictar. Abrí la página en Chrome para Android. Igual podés usar «Pegar texto» y los botones + y −.'); return; }
-    msg('');
-    rec = new SR();
-    rec.lang = 'es-AR'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
-    rec.onstart = () => { processed = 0; prevTokens = []; prevTime = 0; };
-    rec.onresult = e => {
-      let interim = '';
-      for(let i = 0; i < e.results.length; i++){
-        const r = e.results[i];
-        if(r.isFinal){
-          if(i >= processed){ processed = i + 1; lastFinal = r[0].transcript.trim(); logRaw(i, lastFinal); queueText(lastFinal); }
-        } else { interim += r[0].transcript; }
+    if(!SR){msg('Este navegador no permite dictar. Abrí la página en Chrome para Android. Igual podés usar «Pegar texto» y los botones + y −.');return;}
+    msg('');rec=new SR();
+    rec.lang='es-AR';rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=1;
+    rec.onstart=()=>{processed=0;prevTokens=[];prevTime=0;};
+    rec.onresult=e=>{
+      let interim='';
+      for(let i=0;i<e.results.length;i++){
+        const r=e.results[i];
+        if(r.isFinal){if(i>=processed){processed=i+1;lastFinal=r[0].transcript.trim();logRaw(i,lastFinal);queueText(lastFinal);}}
+        else{interim+=r[0].transcript;}
       }
-      $('heard').textContent = interim || (lastFinal ? 'Último dictado: ' + lastFinal : '');
+      $('heard').textContent=interim||(lastFinal?'Último dictado: '+lastFinal:'');
     };
-    rec.onerror = e => {
-      if(e.error === 'audio-capture' && mrec) msg('El micrófono parece ocupado por la grabación de audio. Desactivá «Guardar audio al dictar» y probá de nuevo.');
-      if(e.error === 'not-allowed' || e.error === 'service-not-allowed'){
-        want = false; msg('El micrófono está bloqueado. Habilitá el permiso del micrófono para esta página en Chrome y probá de nuevo.');
-      } else if(e.error === 'network'){
-        want = false; msg('No hay internet: el dictado del navegador la necesita. Podés anotar con los botones + y −.');
-      }
+    rec.onerror=e=>{
+      if(e.error==='audio-capture'&&mrec)msg('El micrófono parece ocupado por la grabación de audio. Desactivá «Guardar audio al dictar» y probá de nuevo.');
+      if(e.error==='not-allowed'||e.error==='service-not-allowed'){want=false;msg('El micrófono está bloqueado. Habilitá el permiso del micrófono para esta página en Chrome y probá de nuevo.');}
+      else if(e.error==='network'){want=false;msg('No hay internet: el dictado del navegador la necesita. Podés anotar con los botones + y −.');}
     };
-    rec.onend = () => {
-      if(want){ try{ rec.start(); }catch(e){ want = false; setMic(false); keepAwake(false); if(pocket) pocketAlert(); } }
-      else { flushBuf(); stopAudio(); setMic(false); keepAwake(false); if(pocket) pocketAlert(); }
+    rec.onend=()=>{
+      if(want){try{rec.start();}catch(e){want=false;setMic(false);keepAwake(false);if(pocket)pocketAlert();}}
+      else{flushBuf();stopAudio();setMic(false);keepAwake(false);if(pocket)pocketAlert();}
     };
-    want = true;
-    try{ rec.start(); setMic(true); keepAwake(true); startAudio(); }catch(e){ want = false; setMic(false); }
+    want=true;try{rec.start();setMic(true);keepAwake(true);startAudio();}catch(e){want=false;setMic(false);}
   }
-  function stopRec(){ want = false; if(rec){ try{ rec.stop(); }catch(e){} } flushBuf(); stopAudio(); setMic(false); keepAwake(false); }
-  $('mic').onclick = () => want ? stopRec() : startRec();
-  $('pocketBtn').onclick = enterPocket;
+  function stopRec(){want=false;if(rec){try{rec.stop();}catch(e){}}flushBuf();stopAudio();setMic(false);keepAwake(false);}
+  $('mic').onclick=()=>want?stopRec():startRec();
+  $('pocketBtn').onclick=enterPocket;
 
   /* ---------- botones ---------- */
-  $('sort').onchange = e => { state.sort = e.target.value; render(); };
-  $('undo').onclick = () => { state.log.pop(); save(); render(); };
-  $('pasteGo').onclick = () => {
-    const t = $('paste').value.trim();
-    if(!t) return;
-    const n = addFromText(t);
-    $('paste').value = '';
-    msg(n ? '' : 'No encontré especies en ese texto.');
+  $('sort').onchange=e=>{state.sort=e.target.value;render();};
+  $('undo').onclick=()=>{state.log.pop();save();render();};
+  $('pasteGo').onclick=()=>{
+    const t=$('paste').value.trim();if(!t)return;
+    const n=addFromText(t);$('paste').value='';
+    msg(n?'':'No encontré especies en ese texto.');
   };
-  const addManual = () => {
-    const v = $('manual').value.trim(); if(!v) return;
-    state.log.push({name:v.toLowerCase(), n:1}); $('manual').value = ''; save(); render();
+  const addManual=()=>{
+    const v=$('manual').value.trim();if(!v)return;
+    state.log.push({name:v.toLowerCase(),n:1});$('manual').value='';save();render();
   };
-  $('manualGo').onclick = addManual;
-  $('manual').onkeydown = e => { if(e.key === 'Enter'){ e.preventDefault(); addManual(); } };
+  $('manualGo').onclick=addManual;
+  $('manual').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addManual();}};
 
-  $('point').value = state.point;
-  $('point').oninput = e => { state.point = e.target.value; save(); };
+  /* campos del punto */
+  $('point').value=state.point;
+  $('point').oninput=e=>{state.point=e.target.value;save();};
+  $('comentarios').value=state.comentarios;
+  $('comentarios').oninput=e=>{state.comentarios=e.target.value;save();};
 
-  $('known').value = state.known.join('\n');
-  $('known').oninput = e => { state.known = e.target.value.split('\n').map(s => s.trim()).filter(Boolean); save(); };
+  $('known').value=state.known.join('\n');
+  $('known').oninput=e=>{state.known=e.target.value.split('\n').map(s=>s.trim()).filter(Boolean);save();};
 
-  $('aAdd').onclick = () => {
-    const f = $('aFrom').value.trim(), t = $('aTo').value.trim();
-    if(!f || !t) return;
-    state.aliases.push({from:f, to:t}); addKnown(t); $('aFrom').value = ''; $('aTo').value = ''; save(); render();
+  $('aAdd').onclick=()=>{
+    const f=$('aFrom').value.trim(),t=$('aTo').value.trim();if(!f||!t)return;
+    state.aliases.push({from:f,to:t});addKnown(t);$('aFrom').value='';$('aTo').value='';save();render();
   };
 
-  function listText(){
-    return aggregate().sort((a, b) => a.label.localeCompare(b.label, 'es')).map(r => r.label + ': ' + r.n).join('\n');
-  }
-  $('copy').onclick = async () => {
-    const t = listText(); if(!t){ msg('La lista está vacía.'); return; }
-    try{ await navigator.clipboard.writeText(t); msg('Lista copiada.'); }
+  function listText(){return aggregate().sort((a,b)=>a.label.localeCompare(b.label,'es')).map(r=>r.label+': '+r.n).join('\n');}
+  $('copy').onclick=async()=>{
+    const t=listText();if(!t){msg('La lista está vacía.');return;}
+    try{await navigator.clipboard.writeText(t);msg('Lista copiada.');}
     catch(e){
-      const ta = document.createElement('textarea'); ta.value = t; document.body.append(ta); ta.select();
-      try{ document.execCommand('copy'); msg('Lista copiada.'); }catch(_){ msg('No pude copiar. Probá con la planilla CSV.'); }
+      const ta=document.createElement('textarea');ta.value=t;document.body.append(ta);ta.select();
+      try{document.execCommand('copy');msg('Lista copiada.');}catch(_){msg('No pude copiar. Probá con la planilla CSV.');}
       ta.remove();
     }
   };
-  /* ---------- exportación: tabla común, Excel (.xlsx) real y CSV ---------- */
-  const pad2 = n => String(n).padStart(2, '0');
-  const today = () => { const d = new Date(); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); };
+
+  /* ---------- exportación ---------- */
+  const pad2=n=>String(n).padStart(2,'0');
+  const today=()=>{const d=new Date();return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());};
   function fileBase(){
-    const b = state.point.replace(/[\\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
-    return b || 'aves_' + (state.date || today());
+    const b=state.point.replace(/[\\\/:*?"<>|]/g,' ').replace(/\s+/g,' ').trim().slice(0,80);
+    return b||'aves_'+(state.date||today());
   }
   function exportTable(){
-    const g = state.gps, rows = aggregate().sort((a, b) => a.label.localeCompare(b.label, 'es'));
-    return [['Punto', 'Fecha', 'Latitud', 'Longitud', 'Especie', 'Nombre científico', 'Individuos'],
-      ...rows.map(r => [state.point.trim(), state.date || today(), g ? g.lat : '', g ? g.lon : '', r.label, sciOf(r.label), r.n])];
+    const g=state.gps,rows=aggregate().sort((a,b)=>a.label.localeCompare(b.label,'es'));
+    return[['Punto','Fecha','Latitud','Longitud','Especie','Nombre científico','Individuos','Comentarios'],
+      ...rows.map(r=>[state.point.trim(),state.date||today(),g?g.lat:'',g?g.lon:'',r.label,sciOf(r.label),r.n,state.comentarios.trim()])];
   }
   function csvText(table){
-    const q = s => '"' + String(s).replace(/"/g, '""') + '"';
-    // Con punto y coma como separador, Excel en español espera la coma como decimal.
-    const cell = v => typeof v === 'number' ? String(Number.isInteger(v) ? v : v.toFixed(6)).replace('.', ',') : q(v);
-    return table.map((r, i) => r.map(v => i === 0 ? q(v) : cell(v)).join(';')).join('\r\n');
+    const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
+    const cell=v=>typeof v==='number'?String(Number.isInteger(v)?v:v.toFixed(6)).replace('.',','):q(v);
+    return table.map((r,i)=>r.map(v=>i===0?q(v):cell(v)).join(';')).join('\r\n');
   }
-  const CRC_T = (() => { const t = []; for(let n = 0; n < 256; n++){ let c = n; for(let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
-  const crc32 = b => { let c = 0xFFFFFFFF; for(let i = 0; i < b.length; i++) c = CRC_T[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
-  function zipStore(files, mime){
-    const enc = new TextEncoder(), parts = [], central = []; let offset = 0;
-    const d = new Date();
-    const dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
-    const dosDate = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
-    files.forEach(f => {
-      const name = enc.encode(f.name), crc = crc32(f.data), size = f.data.length;
-      const lh = new DataView(new ArrayBuffer(30));
-      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
-      lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true); lh.setUint32(14, crc, true);
-      lh.setUint32(18, size, true); lh.setUint32(22, size, true); lh.setUint16(26, name.length, true);
-      parts.push(new Uint8Array(lh.buffer), name, f.data);
-      const ch = new DataView(new ArrayBuffer(46));
-      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
-      ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true); ch.setUint32(16, crc, true);
-      ch.setUint32(20, size, true); ch.setUint32(24, size, true); ch.setUint16(28, name.length, true);
-      ch.setUint32(42, offset, true);
-      central.push(new Uint8Array(ch.buffer), name);
-      offset += 30 + name.length + size;
+  const CRC_T=(()=>{const t=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+  const crc32=b=>{let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=CRC_T[(c^b[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0;};
+  function zipStore(files,mime){
+    const enc=new TextEncoder(),parts=[],central=[];let offset=0;
+    const d=new Date();
+    const dosTime=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1);
+    const dosDate=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate();
+    files.forEach(f=>{
+      const name=enc.encode(f.name),crc=crc32(f.data),size=f.data.length;
+      const lh=new DataView(new ArrayBuffer(30));
+      lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(6,0x0800,true);
+      lh.setUint16(10,dosTime,true);lh.setUint16(12,dosDate,true);lh.setUint32(14,crc,true);
+      lh.setUint32(18,size,true);lh.setUint32(22,size,true);lh.setUint16(26,name.length,true);
+      parts.push(new Uint8Array(lh.buffer),name,f.data);
+      const ch=new DataView(new ArrayBuffer(46));
+      ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint16(8,0x0800,true);
+      ch.setUint16(12,dosTime,true);ch.setUint16(14,dosDate,true);ch.setUint32(16,crc,true);
+      ch.setUint32(20,size,true);ch.setUint32(24,size,true);ch.setUint16(28,name.length,true);
+      ch.setUint32(42,offset,true);
+      central.push(new Uint8Array(ch.buffer),name);
+      offset+=30+name.length+size;
     });
-    const cdSize = central.reduce((s, x) => s + x.length, 0);
-    const end = new DataView(new ArrayBuffer(22));
-    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
-    end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
-    return new Blob([...parts, ...central, new Uint8Array(end.buffer)], {type:mime});
+    const cdSize=central.reduce((s,x)=>s+x.length,0);
+    const end=new DataView(new ArrayBuffer(22));
+    end.setUint32(0,0x06054b50,true);end.setUint16(8,files.length,true);end.setUint16(10,files.length,true);
+    end.setUint32(12,cdSize,true);end.setUint32(16,offset,true);
+    return new Blob([...parts,...central,new Uint8Array(end.buffer)],{type:mime});
   }
   function makeXlsx(table){
-    const enc = new TextEncoder();
-    const xesc = s => String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const col = i => String.fromCharCode(65 + i);
-    const rows = table.map((r, ri) => '<row r="' + (ri + 1) + '">' + r.map((v, ci) => {
-      const ref = col(ci) + (ri + 1);
-      if(typeof v === 'number') return '<c r="' + ref + '"><v>' + v + '</v></c>';
-      if(v === '' || v == null) return '';
-      return '<c r="' + ref + '" t="inlineStr"' + (ri === 0 ? ' s="1"' : '') + '><is><t xml:space="preserve">' + xesc(v) + '</t></is></c>';
-    }).join('') + '</row>').join('');
-    const widths = [24, 12, 12, 12, 28, 30, 12];
-    const cols = widths.map((w, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>').join('');
-    const X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-    const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
-    const RNS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
-    const PNS = 'http://schemas.openxmlformats.org/package/2006/relationships';
-    const CT = 'application/vnd.openxmlformats-officedocument.spreadsheetml.';
-    const files = [
-      ['[Content_Types].xml', X + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="' + CT + 'sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="' + CT + 'worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="' + CT + 'styles+xml"/></Types>'],
-      ['_rels/.rels', X + '<Relationships xmlns="' + PNS + '"><Relationship Id="rId1" Type="' + RNS + '/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
-      ['xl/workbook.xml', X + '<workbook xmlns="' + NS + '" xmlns:r="' + RNS + '"><sheets><sheet name="Aves" sheetId="1" r:id="rId1"/></sheets></workbook>'],
-      ['xl/_rels/workbook.xml.rels', X + '<Relationships xmlns="' + PNS + '"><Relationship Id="rId1" Type="' + RNS + '/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="' + RNS + '/styles" Target="styles.xml"/></Relationships>'],
-      ['xl/styles.xml', X + '<styleSheet xmlns="' + NS + '"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'],
-      ['xl/worksheets/sheet1.xml', X + '<worksheet xmlns="' + NS + '"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>' + cols + '</cols><sheetData>' + rows + '</sheetData></worksheet>']
-    ].map(([name, xml]) => ({name, data:enc.encode(xml)}));
-    return zipStore(files, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    const enc=new TextEncoder();
+    const xesc=s=>String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const col=i=>String.fromCharCode(65+i);
+    const rows=table.map((r,ri)=>'<row r="'+(ri+1)+'">'+r.map((v,ci)=>{
+      const ref=col(ci)+(ri+1);
+      if(typeof v==='number')return'<c r="'+ref+'"><v>'+v+'</v></c>';
+      if(v===''||v==null)return'';
+      return'<c r="'+ref+'" t="inlineStr"'+(ri===0?' s="1"':'')+"><is><t xml:space=\"preserve\">"+xesc(v)+'</t></is></c>';
+    }).join('')+'</row>').join('');
+    const widths=[24,12,12,12,28,30,12,32];
+    const cols=widths.map((w,i)=>'<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+w+'" customWidth="1"/>').join('');
+    const X='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+    const NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+    const RNS='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+    const PNS='http://schemas.openxmlformats.org/package/2006/relationships';
+    const CT='application/vnd.openxmlformats-officedocument.spreadsheetml.';
+    const files=[
+      ['[Content_Types].xml',X+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="'+CT+'sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="'+CT+'worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="'+CT+'styles+xml"/></Types>'],
+      ['_rels/.rels',X+'<Relationships xmlns="'+PNS+'"><Relationship Id="rId1" Type="'+RNS+'/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+      ['xl/workbook.xml',X+'<workbook xmlns="'+NS+'" xmlns:r="'+RNS+'"><sheets><sheet name="Aves" sheetId="1" r:id="rId1"/></sheets></workbook>'],
+      ['xl/_rels/workbook.xml.rels',X+'<Relationships xmlns="'+PNS+'"><Relationship Id="rId1" Type="'+RNS+'/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="'+RNS+'/styles" Target="styles.xml"/></Relationships>'],
+      ['xl/styles.xml',X+'<styleSheet xmlns="'+NS+'"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'],
+      ['xl/worksheets/sheet1.xml',X+'<worksheet xmlns="'+NS+'"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>'+cols+'</cols><sheetData>'+rows+'</sheetData></worksheet>']
+    ].map(([name,xml])=>({name,data:enc.encode(xml)}));
+    return zipStore(files,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   }
-  function downloadBlob(blob, name){
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
-    flash('Descargando «' + name + '». Queda en la carpeta Descargas.');
-    document.body.append(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  function downloadBlob(blob,name){
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;
+    flash('Descargando «'+name+'». Queda en la carpeta Descargas.');
+    document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
   }
-  $('xlsx').onclick = () => {
-    if(!aggregate().length){ msg('La lista está vacía.'); return; }
-    downloadBlob(makeXlsx(exportTable()), fileBase() + '.xlsx');
-  };
-  $('csv').onclick = () => {
-    if(!aggregate().length){ msg('La lista está vacía.'); return; }
-    downloadBlob(new Blob(['\ufeff' + csvText(exportTable())], {type:'text/csv;charset=utf-8'}), fileBase() + '.csv');
-  };
+  $('xlsx').onclick=()=>{if(!aggregate().length){msg('La lista está vacía.');return;}downloadBlob(makeXlsx(exportTable()),fileBase()+'.xlsx');};
+  $('csv').onclick=()=>{if(!aggregate().length){msg('La lista está vacía.');return;}downloadBlob(new Blob(['\ufeff'+csvText(exportTable())],{type:'text/csv;charset=utf-8'}),fileBase()+'.csv');};
 
-  /* ---------- audio de respaldo (experimental, se guarda solo mientras la app está abierta) ---------- */
-  let media = null, mrec = null, mchunks = [], mstart = 0, audioUrls = [];
-  const audios = [];
+  /* ---------- audio de respaldo ---------- */
+  let media=null,mrec=null,mchunks=[],mstart=0,audioUrls=[];
+  const audios=[];
   async function startAudio(){
-    if(!state.audioOn || mrec) return;
-    if(!navigator.mediaDevices || !window.MediaRecorder){ msg('Este navegador no puede grabar audio.'); return; }
+    if(!state.audioOn||mrec)return;
+    if(!navigator.mediaDevices||!window.MediaRecorder){msg('Este navegador no puede grabar audio.');return;}
     try{
-      media = await navigator.mediaDevices.getUserMedia({audio:true});
-      const type = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find(t => MediaRecorder.isTypeSupported(t));
-      mrec = new MediaRecorder(media, type ? {mimeType:type, audioBitsPerSecond:32000} : undefined);
-      mchunks = []; mstart = Date.now();
-      mrec.ondataavailable = e => { if(e.data && e.data.size) mchunks.push(e.data); };
-      mrec.onstop = finishAudio;
-      mrec.start(5000);
+      media=await navigator.mediaDevices.getUserMedia({audio:true});
+      const type=['audio/webm;codecs=opus','audio/mp4','audio/webm'].find(t=>MediaRecorder.isTypeSupported(t));
+      mrec=new MediaRecorder(media,type?{mimeType:type,audioBitsPerSecond:32000}:undefined);
+      mchunks=[];mstart=Date.now();
+      mrec.ondataavailable=e=>{if(e.data&&e.data.size)mchunks.push(e.data);};
+      mrec.onstop=finishAudio;mrec.start(5000);
     }catch(e){
-      if(media) media.getTracks().forEach(t => t.stop());
-      media = null; mrec = null;
-      msg('No pude grabar el audio de respaldo. El dictado sigue andando.');
+      if(media)media.getTracks().forEach(t=>t.stop());
+      media=null;mrec=null;msg('No pude grabar el audio de respaldo. El dictado sigue andando.');
     }
   }
-  stopAudio = () => { if(mrec && mrec.state !== 'inactive'){ try{ mrec.stop(); }catch(e){} } };
+  stopAudio=()=>{if(mrec&&mrec.state!=='inactive'){try{mrec.stop();}catch(e){}}};
   function finishAudio(){
-    const type = (mrec && mrec.mimeType) || 'audio/webm';
-    const blob = new Blob(mchunks, {type});
-    if(media) media.getTracks().forEach(t => t.stop());
-    media = null; mrec = null; mchunks = [];
-    if(!blob.size) return;
-    audios.unshift({blob, ext:type.indexOf('mp4') >= 0 ? 'm4a' : 'webm', secs:Math.round((Date.now() - mstart) / 1000), at:new Date()});
+    const type=(mrec&&mrec.mimeType)||'audio/webm';
+    const blob=new Blob(mchunks,{type});
+    if(media)media.getTracks().forEach(t=>t.stop());
+    media=null;mrec=null;mchunks=[];if(!blob.size)return;
+    audios.unshift({blob,ext:type.indexOf('mp4')>=0?'m4a':'webm',secs:Math.round((Date.now()-mstart)/1000),at:new Date()});
     renderAudios();
   }
   function renderAudios(){
-    audioUrls.forEach(u => URL.revokeObjectURL(u)); audioUrls = [];
-    const ul = $('audioList'); ul.textContent = '';
-    audios.forEach((a, idx) => {
-      const li = document.createElement('li');
-      const t = document.createElement('span');
-      t.textContent = pad2(a.at.getHours()) + ':' + pad2(a.at.getMinutes()) + ' · ' + Math.floor(a.secs / 60) + ':' + pad2(a.secs % 60) + ' · ' + (a.blob.size / 1048576).toFixed(1) + ' MB';
-      const url = URL.createObjectURL(a.blob); audioUrls.push(url);
-      const player = document.createElement('audio'); player.controls = true; player.src = url;
-      const dl = document.createElement('button'); dl.type = 'button'; dl.className = 'btn alt'; dl.textContent = 'Descargar';
-      dl.onclick = () => downloadBlob(a.blob, fileBase() + ' audio ' + pad2(a.at.getHours()) + pad2(a.at.getMinutes()) + '.' + a.ext);
-      const del = document.createElement('button'); del.type = 'button'; del.className = 'btn danger'; del.textContent = 'Borrar';
-      del.onclick = () => { if(confirm('¿Borrar este audio?')){ audios.splice(idx, 1); renderAudios(); } };
-      li.append(t, dl, del, player); ul.append(li);
+    audioUrls.forEach(u=>URL.revokeObjectURL(u));audioUrls=[];
+    const ul=$('audioList');ul.textContent='';
+    audios.forEach((a,idx)=>{
+      const li=document.createElement('li');
+      const t=document.createElement('span');
+      t.textContent=pad2(a.at.getHours())+':'+pad2(a.at.getMinutes())+' · '+Math.floor(a.secs/60)+':'+pad2(a.secs%60)+' · '+(a.blob.size/1048576).toFixed(1)+' MB';
+      const url=URL.createObjectURL(a.blob);audioUrls.push(url);
+      const player=document.createElement('audio');player.controls=true;player.src=url;
+      const dl=document.createElement('button');dl.type='button';dl.className='btn alt';dl.textContent='Descargar';
+      dl.onclick=()=>downloadBlob(a.blob,fileBase()+' audio '+pad2(a.at.getHours())+pad2(a.at.getMinutes())+'.'+a.ext);
+      const del=document.createElement('button');del.type='button';del.className='btn danger';del.textContent='Borrar';
+      del.onclick=()=>{if(confirm('¿Borrar este audio?')){audios.splice(idx,1);renderAudios();}};
+      li.append(t,dl,del,player);ul.append(li);
     });
   }
-  $('audioOn').checked = !!state.audioOn;
-  $('audioOn').onchange = e => { state.audioOn = e.target.checked; save(); };
+  $('audioOn').checked=!!state.audioOn;
+  $('audioOn').onchange=e=>{state.audioOn=e.target.checked;save();};
 
-  /* ---------- fecha del muestreo ---------- */
+  /* ---------- fecha ---------- */
   function showDateNote(){
-    $('dateNote').textContent = !state.date ? 'Sin fecha: al descargar se usa la de hoy.' : state.date !== today() ? 'Ojo: no es la fecha de hoy.' : '';
+    $('dateNote').textContent=!state.date?'Sin fecha: al descargar se usa la de hoy.':state.date!==today()?'Ojo: no es la fecha de hoy.':'';
   }
-  $('fecha').value = state.date;
-  $('fecha').onchange = e => { state.date = e.target.value; save(); showDateNote(); };
+  $('fecha').value=state.date;
+  $('fecha').onchange=e=>{state.date=e.target.value;save();showDateNote();};
 
-  /* ---------- GPS del punto ---------- */
+  /* ---------- GPS ---------- */
   function showGps(){
-    const g = state.gps;
-    $('gpsInfo').textContent = g ? 'GPS: ' + g.lat.toFixed(6) + ', ' + g.lon.toFixed(6) + ' (precisión ±' + Math.round(g.acc) + ' m)' : 'Sin GPS en este punto.';
+    const g=state.gps;
+    $('gpsInfo').textContent=g?'GPS: '+g.lat.toFixed(6)+', '+g.lon.toFixed(6)+' (precisión ±'+Math.round(g.acc)+' m)':'Sin GPS en este punto.';
   }
-  $('gpsBtn').onclick = () => {
-    if(!navigator.geolocation){ msg('Este navegador no permite usar el GPS.'); return; }
-    msg('');
-    $('gpsInfo').textContent = 'Buscando señal GPS… puede tardar unos segundos, mejor al aire libre.';
-    navigator.geolocation.getCurrentPosition(pos => {
-      state.gps = {lat:pos.coords.latitude, lon:pos.coords.longitude, acc:pos.coords.accuracy, t:Date.now()};
-      save(); showGps(); flash('GPS guardado para este punto.');
-    }, err => {
+  $('gpsBtn').onclick=()=>{
+    if(!navigator.geolocation){msg('Este navegador no permite usar el GPS.');return;}
+    msg('');$('gpsInfo').textContent='Buscando señal GPS… puede tardar unos segundos, mejor al aire libre.';
+    navigator.geolocation.getCurrentPosition(pos=>{
+      state.gps={lat:pos.coords.latitude,lon:pos.coords.longitude,acc:pos.coords.accuracy,t:Date.now()};
+      save();showGps();flash('GPS guardado para este punto.');
+    },err=>{
       showGps();
-      msg(err.code === 1
-        ? 'Falta el permiso de ubicación. Habilitalo para esta página en Chrome y activá la ubicación del celu.'
-        : 'No pude obtener la ubicación. Probá al aire libre y con la ubicación del celu activada.');
-    }, {enableHighAccuracy:true, timeout:30000, maximumAge:0});
+      msg(err.code===1?'Falta el permiso de ubicación. Habilitalo para esta página en Chrome y activá la ubicación del celu.':'No pude obtener la ubicación. Probá al aire libre y con la ubicación del celu activada.');
+    },{enableHighAccuracy:true,timeout:30000,maximumAge:0});
   };
-  $('clear').onclick = () => {
-    if(confirm('¿Empezar un punto nuevo? Se borran la lista, el nombre del punto y el GPS. La fecha se mantiene. Tus correcciones y especies habituales se mantienen. Descargá antes el CSV si lo necesitás.')){
-      state.log = []; state.point = ''; state.gps = null; showGps(); $('point').value = ''; buf = ''; prevTokens = [];
-      lastFinal = ''; $('heard').textContent = ''; save(); render();
+
+  /* ---------- terminar punto ---------- */
+  $('clear').onclick=()=>{
+    if(confirm('¿Terminar este punto y empezar uno nuevo? Se borran la lista, el nombre, el GPS y los comentarios. Tus correcciones y especies habituales se mantienen. Descargá el Excel antes si lo necesitás.')){
+      state.log=[];state.point='';state.gps=null;state.date='';state.comentarios='';state.pointCreated=false;
+      buf='';prevTokens=[];lastFinal='';$('heard').textContent='';
+      $('point').value='';$('fecha').value='';$('comentarios').value='';
+      showGps();showDateNote();save();render();showTab('punto');
     }
   };
 
-  /* ---------- copia de seguridad de nombres ---------- */
-  $('backup').onclick = () => {
-    const data = {app:'aves-dictadas', version:1, aliases:state.aliases, known:state.known};
-    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'aves-nombres_' + new Date().toISOString().slice(0, 10) + '.json';
-    document.body.append(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    flash('Copia descargada.');
+  /* ---------- copia de seguridad ---------- */
+  $('backup').onclick=()=>{
+    const data={app:'aves-dictadas',version:1,aliases:state.aliases,known:state.known};
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download='aves-nombres_'+new Date().toISOString().slice(0,10)+'.json';
+    document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);flash('Copia descargada.');
   };
-  $('restore').onclick = () => $('restoreFile').click();
-  $('restoreFile').onchange = async e => {
-    const f = e.target.files[0]; if(!f) return;
+  $('restore').onclick=()=>$('restoreFile').click();
+  $('restoreFile').onchange=async e=>{
+    const f=e.target.files[0];if(!f)return;
     try{
-      const d = JSON.parse(await f.text());
-      if(Array.isArray(d.aliases)) d.aliases.forEach(x => {
-        if(x && x.from && x.to && !state.aliases.some(y => norm(y.from) === norm(String(x.from))))
-          state.aliases.push({from:String(x.from), to:String(x.to)});
-      });
-      if(Array.isArray(d.known)) d.known.forEach(k => { if(typeof k === 'string' && k.trim()) addKnown(k.trim()); });
-      save(); render(); flash('Copia cargada.');
-    }catch(err){ msg('No pude leer ese archivo. Tiene que ser una copia guardada desde esta app.'); }
-    e.target.value = '';
+      const d=JSON.parse(await f.text());
+      if(Array.isArray(d.aliases))d.aliases.forEach(x=>{if(x&&x.from&&x.to&&!state.aliases.some(y=>norm(y.from)===norm(String(x.from))))state.aliases.push({from:String(x.from),to:String(x.to)});});
+      if(Array.isArray(d.known))d.known.forEach(k=>{if(typeof k==='string'&&k.trim())addKnown(k.trim());});
+      save();render();flash('Copia cargada.');
+    }catch(err){msg('No pude leer ese archivo. Tiene que ser una copia guardada desde esta app.');}
+    e.target.value='';
   };
 
-  /* ---------- guardado permanente y uso sin conexión ---------- */
-  try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
-  if('serviceWorker' in navigator && location.protocol.indexOf('http') === 0){
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  }
+  /* ---------- service worker ---------- */
+  try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
+  if('serviceWorker' in navigator&&location.protocol.indexOf('http')===0){navigator.serviceWorker.register('sw.js').catch(()=>{});}
 
-  render();
-  showGps();
-  showDateNote();
-  loadBaseList();
+  render();showGps();showDateNote();loadBaseList();
 })();
 </script>
 </body>
