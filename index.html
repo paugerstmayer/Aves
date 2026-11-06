@@ -225,7 +225,7 @@ footer .inner{max-width:640px; margin:0 auto}
       <input type="file" id="restoreFile" accept=".json,application/json" hidden>
       <p>La copia guarda tus correcciones de nombres y tu lista de especies habituales, para no perderlas si cambiás de celu o borrás los datos del navegador.</p>
       <button class="btn danger" id="clear" type="button">Empezar nuevo punto (borra la lista)</button>
-      <p>Versión 13</p>
+      <p>Versión 15</p>
     </div>
   </details>
 </div>
@@ -320,7 +320,6 @@ footer .inner{max-width:640px; margin:0 auto}
       if(!DROP.has(w)) name.push(toks[i].toLowerCase());
       i++;
     }
-    if(name.length) entries.push({name:name.join(' '), n:1, implicit:true});
     return {entries, lead};
   }
 
@@ -419,12 +418,8 @@ footer .inner{max-width:640px; margin:0 auto}
   }
 
   function addFromText(text){
-    const {entries, lead} = parse(text);
-    if(lead !== null){
-      const last = state.log[state.log.length - 1];
-      if(last && last.implicit){ last.n = lead; last.implicit = false; }
-    }
-    entries.forEach(e => state.log.push({name:e.name, n:e.n, implicit:!!e.implicit}));
+    const {entries} = parse(text);
+    entries.forEach(e => state.log.push({name:e.name, n:e.n}));
     save(); render();
     return entries.length;
   }
